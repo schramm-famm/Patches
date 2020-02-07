@@ -2,7 +2,7 @@ package models
 
 import (
 	"time"
-	
+	"fmt"
 	"log"
 )
 
@@ -18,9 +18,12 @@ type Convo_ID struct {
 	Convo_ID   int64      		 `json:"convo_id,string"`
 }
 
-func (db *DB) GetPatches() ([]Patch, error) {
+// Get patch rows from database using filters
+func (db *DB) GetPatches(filterString string) ([]Patch, error) {
 
-	rows, err := db.Query("SELECT * FROM patches")
+	// Create query string with filters
+	queryString := fmt.Sprintf("%s%s", "SELECT * FROM patches", filterString)
+	rows, err := db.Query(queryString)
 	if err != nil {
 		log.Print("Error getting rows")
 		log.Print(err)
@@ -42,6 +45,7 @@ func (db *DB) GetPatches() ([]Patch, error) {
 	return patches, err
 }
 
+// Add new patch to the database
 func (db *DB) CreatePatch(patch *Patch) (error) {
 	tx, err := db.Begin()
 	if err != nil {
@@ -63,7 +67,8 @@ func (db *DB) CreatePatch(patch *Patch) (error) {
 	return nil
 }
 
-func (db *DB) DeletePatch(convo_id int64) (int64, error) {
+// Delete patches from the database by conversation
+func (db *DB) DeletePatches(convo_id int64) (int64, error) {
 	tx, err := db.Begin()
 	if err != nil {
 		return 0, err

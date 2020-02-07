@@ -18,8 +18,8 @@ const (
 
   type Datastore interface {
 	CreatePatch(patch *Patch) (error)
-	GetPatches() ([]Patch, error)
-	DeletePatch(convo_id int64) (int64, error)
+	GetPatches(filterString string) ([]Patch, error)
+	DeletePatches(convo_id int64) (int64, error)
 }
 
 // DB represents an SQL database connection
