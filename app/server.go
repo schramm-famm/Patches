@@ -1,6 +1,8 @@
 package main
 
 import (
+	"patches/models"
+	
 	"github.com/gorilla/mux"
 	"log"
 	"net/http"
@@ -9,12 +11,19 @@ import (
 )
 
 func main() {
+	db, err := models.DBConnect()
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
+	env := &handlers.Env{db}
+
 	httpMux := mux.NewRouter()
 
-	httpMux.HandleFunc("/api/patches", handlers.PostPatchesHandler).Methods("POST")
-	httpMux.HandleFunc("/api/patches", handlers.GetPatchesHandler).Methods("GET")
-	httpMux.HandleFunc("/api/patches", handlers.PutPatchesHandler).Methods("PATCH")
-	httpMux.HandleFunc("/api/patches", handlers.DeletePatchesHandler).Methods("DELETE")
+	httpMux.HandleFunc("/patches/v1/patches", env.PostPatchesHandler).Methods("POST")
+	httpMux.HandleFunc("/patches/v1/patches", env.GetPatchesHandler).Methods("GET")
+	httpMux.HandleFunc("/patches/v1/patches", env.DeletePatchesHandler).Methods("DELETE")
 
 	httpSrv := &http.Server{
 		Addr:         ":80",
