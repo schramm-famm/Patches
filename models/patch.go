@@ -1,21 +1,21 @@
 package models
 
 import (
-	"time"
 	"fmt"
 	"log"
+	"time"
 )
 
 type Patch struct {
-	Timestamp   time.Time      		 `json:"timestamp"`
-	Patch 		string 				 `json:"patch"`
-	Convo_ID    string               `json:"convo_id"`
-	User_ID     string         		 `json:"user_id"`
-	Type 		string 				 `json:"type"`
+	Timestamp time.Time `json:"timestamp"`
+	Patch     string    `json:"patch"`
+	Convo_ID  string    `json:"convo_id"`
+	User_ID   string    `json:"user_id"`
+	Type      string    `json:"type"`
 }
 
 type Convo_ID struct {
-	Convo_ID   int64      		 `json:"convo_id,string"`
+	Convo_ID int64 `json:"convo_id,string"`
 }
 
 // Get patch rows from database using filters
@@ -46,13 +46,13 @@ func (db *DB) GetPatches(filterString string) ([]Patch, error) {
 }
 
 // Add new patch to the database
-func (db *DB) CreatePatch(patch *Patch) (error) {
+func (db *DB) CreatePatch(patch *Patch) error {
 	tx, err := db.Begin()
 	if err != nil {
-		return  err
+		return err
 	}
 	// Insert patch datas into database
-	_, err = tx.Exec("INSERT INTO patches(time,patch,convo_id,user_id,type) VALUES ($1, $2, $3, $4, $5) ", patch.Timestamp.Format(time.RFC3339), patch.Patch, patch.Convo_ID, patch.User_ID, patch.Type);
+	_, err = tx.Exec("INSERT INTO patches(time,patch,convo_id,user_id,type) VALUES ($1, $2, $3, $4, $5) ", patch.Timestamp.Format(time.RFC3339), patch.Patch, patch.Convo_ID, patch.User_ID, patch.Type)
 	if err != nil {
 		log.Print("Error inserting")
 		log.Print(err)
@@ -93,6 +93,6 @@ func (db *DB) DeletePatches(convo_id int64) (int64, error) {
 		log.Print("Error deleting rows")
 		log.Print(err)
 	}
-	
+
 	return deleted, err
 }

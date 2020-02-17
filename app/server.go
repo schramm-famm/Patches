@@ -2,12 +2,13 @@ package main
 
 import (
 	"patches/models"
-	
-	"github.com/gorilla/mux"
+
 	"log"
 	"net/http"
-	"time"
 	"patches/handlers"
+	"time"
+
+	"github.com/gorilla/mux"
 )
 
 func main() {
