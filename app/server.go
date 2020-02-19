@@ -1,17 +1,25 @@
 package main
 
 import (
-	"patches/models"
-	
+	"fmt"
 	"github.com/gorilla/mux"
 	"log"
 	"net/http"
-	"time"
+	"os"
 	"patches/handlers"
+	"patches/models"
+	"time"
 )
 
 func main() {
-	db, err := models.DBConnect()
+	connectionString := fmt.Sprintf(
+		"host=%s port=%s user=%s "+"password=%s dbname=%s sslmode=disable",
+		os.Getenv("PATCHES_DB_HOST"),
+		os.Getenv("PATCHES_DB_PORT"),
+		os.Getenv("PATCHES_DB_USERNAME"),
+		os.Getenv("PATCHES_DB_PASSWORD"),
+		os.Getenv("PATCHES_DB_DATABASE"))
+	db, err := models.DBConnect(connectionString)
 	if err != nil {
 		log.Fatal(err)
 		return
@@ -21,9 +29,7 @@ func main() {
 
 	httpMux := mux.NewRouter()
 
-	httpMux.HandleFunc("/patches/v1/patches", env.PostPatchesHandler).Methods("POST")
 	httpMux.HandleFunc("/patches/v1/patches", env.GetPatchesHandler).Methods("GET")
-	httpMux.HandleFunc("/patches/v1/patches", env.DeletePatchesHandler).Methods("DELETE")
 
 	httpSrv := &http.Server{
 		Addr:         ":80",

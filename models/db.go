@@ -2,23 +2,14 @@ package models
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 
 	_ "github.com/lib/pq"
 )
 
-const (
-	host     = "localhost"
-	port     = 5432
-	user     = "postgres"
-	password = "vagrant"
-	dbname   = "patches"
-  )
-
-  type Datastore interface {
-	CreatePatch(patch *Patch) (error)
-	GetPatches(filterString string) ([]Patch, error)
+type Datastore interface {
+	CreatePatch(patch *Patch) error
+	GetPatches(filter *Filter) ([]Patch, error)
 	DeletePatches(convo_id int64) (int64, error)
 }
 
@@ -28,12 +19,8 @@ type DB struct {
 }
 
 // Connect to database
-func DBConnect() (*DB, error) {
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-    	"password=%s dbname=%s sslmode=disable",
-		host, port, user, password, dbname)
-		
-	db, err := sql.Open("postgres", psqlInfo)
+func DBConnect(connectionString string) (*DB, error) {
+	db, err := sql.Open("postgres", connectionString)
 	if err != nil {
 		log.Fatal(err)
 		return nil, err
@@ -44,6 +31,6 @@ func DBConnect() (*DB, error) {
 		log.Fatal(err)
 		return nil, err
 	}
-	
+
 	return &DB{db}, nil
 }
