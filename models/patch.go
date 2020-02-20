@@ -30,16 +30,17 @@ func (db *DB) GetPatches(filter *Filter) ([]Patch, error) {
 	filterString := new(strings.Builder)
 	if filter.Conversation != "" {
 		fmt.Fprintf(filterString, "convo_id = %s", filter.Conversation)
+	} else {
+		log.Print("Error with conversation id")
+		return nil, nil
 	}
 
-	if len(filter.User) == 1 {
-		fmt.Fprintf(filterString, " AND user_id = %s", filter.User[0])
-	} else if len(filter.User) > 1 {
+	if len(filter.User) >= 1 {
 		fmt.Fprintf(filterString, " AND (")
 
 		for i, userID := range filter.User {
 			if i == 0 {
-				fmt.Fprintf(filterString, " user_id = %s", userID)
+				fmt.Fprintf(filterString, "user_id = %s", userID)
 			} else {
 				fmt.Fprintf(filterString, " OR user_id = %s", userID)
 			}
@@ -48,14 +49,12 @@ func (db *DB) GetPatches(filter *Filter) ([]Patch, error) {
 		fmt.Fprintf(filterString, ")")
 	}
 
-	if len(filter.Type) == 1 {
-		fmt.Fprintf(filterString, " AND type = %s", filter.Type[0])
-	} else if len(filter.Type) > 1 {
+	if len(filter.Type) >= 1 {
 		fmt.Fprintf(filterString, " AND (")
 
 		for i, patchType := range filter.Type {
 			if i == 0 {
-				fmt.Fprintf(filterString, " type = %s", patchType)
+				fmt.Fprintf(filterString, "type = %s", patchType)
 			} else {
 				fmt.Fprintf(filterString, " OR type = %s", patchType)
 			}
@@ -100,7 +99,7 @@ func (db *DB) GetPatches(filter *Filter) ([]Patch, error) {
 // Add new patch to the database
 func (db *DB) CreatePatch(patch *Patch) error {
 
-	// Insert patch datas into database
+	// Insert patch into database
 	_, err := db.Exec("INSERT INTO patches(time,patch,convo_id,user_id,type) VALUES ($1, $2, $3, $4, $5) ", patch.Timestamp.Format(time.RFC3339), patch.Patch, patch.ConvoID, patch.UserID, patch.Type)
 	if err != nil {
 		log.Print("Error inserting")
