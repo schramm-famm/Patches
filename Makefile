@@ -31,7 +31,7 @@ test: build 		## build and test the module packages
 	go test ./...
 
 run: build 			## build and run the app binaries
-	./tmp/app
+	export HEIMDALL_HOST="localhost" && ./tmp/app
 
 docker: tmp 		## build the docker image
 	docker build -t $(APP_NAME) .

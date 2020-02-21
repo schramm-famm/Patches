@@ -12,22 +12,19 @@ import (
 )
 
 func main() {
-	db, err := models.DBConnect()
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
+	var db models.Datastore
 
-	env := &handlers.Env{db}
+	env := handlers.NewEnv(db, &http.Client{Timeout: time.Second * 10})
 
 	httpMux := mux.NewRouter()
 
 	httpMux.HandleFunc("/patches/v1/patches", env.PostPatchesHandler).Methods("POST")
 	httpMux.HandleFunc("/patches/v1/patches", env.GetPatchesHandler).Methods("GET")
 	httpMux.HandleFunc("/patches/v1/patches", env.DeletePatchesHandler).Methods("DELETE")
+	httpMux.HandleFunc("/patches/v1/connect/{conversation_id:[0-9]+}", env.ConnectHandler).Methods("GET")
 
 	httpSrv := &http.Server{
-		Addr:         ":80",
+		Addr:         ":8081",
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 		IdleTimeout:  120 * time.Second,

@@ -1,7 +1,11 @@
 package handlers
 
 import (
+	"errors"
+	"os"
 	"patches/models"
+	"patches/websockets"
+	"strconv"
 
 	"encoding/json"
 	"fmt"
@@ -10,12 +14,36 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/gorilla/schema"
+	gorillaws "github.com/gorilla/websocket"
 )
 
 type Env struct {
-	DB models.Datastore
+	DB       models.Datastore
+	RC       *http.Client
+	WSBroker *websockets.Broker
 }
+
+func NewEnv(db models.Datastore, rc *http.Client) *Env {
+	return &Env{
+		DB:       db,
+		RC:       rc,
+		WSBroker: websockets.NewBroker(db, rc),
+	}
+}
+
+const (
+	conversationContentRoute = "/ether/v1/converstions/%d/content"
+)
+
+var upgrader = gorillaws.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
+
+var etherHost = os.Getenv("ETHER_HOST")
 
 type Filter struct {
 	Conversation []string  `schema:"convoID"`
@@ -127,4 +155,46 @@ func (env *Env) DeletePatchesHandler(w http.ResponseWriter, r *http.Request) {
 		response := "No rows deleted"
 		json.NewEncoder(w).Encode(response)
 	}
+}
+
+func (env *Env) getConversationContent(userID, conversationID int64) (string, error) {
+	res, err := env.RC.Get("http://" + etherHost + fmt.Sprintf(conversationContentRoute, conversationID))
+	if err != nil {
+		return "", err
+	}
+
+	if res.StatusCode != http.StatusNotFound && res.StatusCode != http.StatusOK {
+		return "", errors.New("Failed to get conversation content")
+	} else if res.StatusCode == http.StatusNotFound {
+		return "", errors.New("Conversation not found")
+	}
+
+	defer res.Body.Close()
+	b, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return string(b), nil
+}
+
+func (env *Env) ConnectHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	conversationID, err := strconv.ParseInt(vars["conversation_id"], 10, 64)
+	if err != nil {
+		errMsg := "Invalid conversation ID"
+		log.Println(errMsg + ": " + err.Error())
+		http.Error(w, errMsg, http.StatusBadRequest)
+		return
+	}
+
+	c, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Print("Upgrade to WebSocket failed: ", err)
+		return
+	}
+
+	fmt.Println("here?")
+	client := env.WSBroker.CreateClient(conversationID, c)
+	go client.Run()
 }
