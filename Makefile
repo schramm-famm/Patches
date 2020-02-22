@@ -1,4 +1,6 @@
 APP_NAME=patches
+HEIMDALL_HOST?=localhost
+ETHER_HOST?=localhost:8082
 HELP_FUNC = \
     %help; \
     while(<>) { \
@@ -31,7 +33,8 @@ test: build 		## build and test the module packages
 	go test ./...
 
 run: build 			## build and run the app binaries
-	export HEIMDALL_HOST="localhost" && ./tmp/app
+	export HEIMDALL_HOST="${HEIMDALL_HOST}" && export ETHER_HOST="${ETHER_HOST}" && \
+		./tmp/app
 
 docker: tmp 		## build the docker image
 	docker build -t $(APP_NAME) .

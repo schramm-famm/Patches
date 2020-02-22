@@ -8,10 +8,10 @@ import (
 )
 
 type Conversation struct {
+	conversationID int64
+	doc            string
 	clients        map[*Client]bool
 	broker         *Broker
-	conversationID int64
-	doc            *string
 
 	register   chan *Client
 	unregister chan *Client
@@ -25,13 +25,12 @@ type Message struct {
 
 var dmp *diffmatchpatch.DiffMatchPatch = diffmatchpatch.New()
 
-func NewConversation(conversationID int64, broker *Broker) *Conversation {
-	doc := ""
+func NewConversation(conversationID int64, doc string, broker *Broker) *Conversation {
 	return &Conversation{
+		conversationID: conversationID,
+		doc:            doc,
 		clients:        make(map[*Client]bool),
 		broker:         broker,
-		conversationID: conversationID,
-		doc:            &doc,
 		register:       make(chan *Client),
 		unregister:     make(chan *Client),
 		broadcast:      make(chan *Message),
@@ -43,7 +42,7 @@ func (c *Conversation) Run() {
 		select {
 		case client := <-c.register:
 			c.clients[client] = true
-			err := client.conn.WriteMessage(gorillaws.TextMessage, []byte(*c.doc))
+			err := client.conn.WriteMessage(gorillaws.TextMessage, []byte(c.doc))
 			if err != nil {
 				return
 			}
@@ -68,7 +67,7 @@ func (c *Conversation) Run() {
 			if err != nil {
 				return
 			}
-			*c.doc, _ = dmp.PatchApply(patches, *c.doc)
+			c.doc, _ = dmp.PatchApply(patches, c.doc)
 
 			for client := range c.clients {
 				if client != message.sender {

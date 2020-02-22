@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -16,10 +18,12 @@ import (
 )
 
 const (
-	authRoute = "/heimdall/v1/token/auth"
+	authRoute    = "/heimdall/v1/token/auth"
+	contentRoute = "/ether/v1/conversations/%d/content"
 )
 
 var heimdallHost = os.Getenv("HEIMDALL_HOST")
+var etherHost = os.Getenv("ETHER_HOST")
 
 type ConvoData struct {
 	conversation *Conversation
@@ -41,14 +45,19 @@ func NewBroker(db models.Datastore, httpClient *http.Client) *Broker {
 	}
 }
 
-func (b *Broker) register(userID, conversationID int64, conn *gorillaws.Conn) *Client {
+func (b *Broker) register(userID, conversationID int64, conn *gorillaws.Conn) (*Client, error) {
 	b.Lock()
 	defer b.Unlock()
 
 	cd, ok := b.active[conversationID]
 	if !ok {
+		content, err := b.getConversationContent(userID, conversationID)
+		if err != nil {
+			return nil, err
+		}
+
 		cd = &ConvoData{
-			conversation: NewConversation(conversationID, b),
+			conversation: NewConversation(conversationID, content, b),
 			clients:      make(map[*Client]bool),
 		}
 		go cd.conversation.Run()
@@ -58,7 +67,7 @@ func (b *Broker) register(userID, conversationID int64, conn *gorillaws.Conn) *C
 	client := NewClient(userID, conn, cd.conversation, b)
 	cd.clients[client] = true
 	cd.conversation.register <- client
-	return client
+	return client, nil
 }
 
 func (b *Broker) unregister(client *Client) {
@@ -111,6 +120,31 @@ func (b *Broker) validateToken(token string) (int64, error) {
 	return resBody.UserID, nil
 }
 
+func (b *Broker) getConversationContent(userID, conversationID int64) (string, error) {
+	req, err := http.NewRequest("GET", "http://"+etherHost+fmt.Sprintf(contentRoute, conversationID), nil)
+	if err != nil {
+		return "", err
+	}
+	res, err := b.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+
+	if res.StatusCode != http.StatusNotFound && res.StatusCode != http.StatusOK {
+		return "", errors.New("Failed to get conversation content")
+	} else if res.StatusCode == http.StatusNotFound {
+		return "", errors.New("Conversation not found")
+	}
+
+	defer res.Body.Close()
+	content, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return string(content), nil
+}
+
 func (b *Broker) StartClient(conversationID int64, conn *gorillaws.Conn) {
 	// Wait for client to send token through the WebSocket connection
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
@@ -138,7 +172,12 @@ func (b *Broker) StartClient(conversationID int64, conn *gorillaws.Conn) {
 	}
 
 	// Create client struct with the user ID and start reading/writing patches
-	client := b.register(userID, conversationID, conn)
+	client, err := b.register(userID, conversationID, conn)
+	if err != nil {
+		log.Printf("Failed to create a new client (user: %d, conversation: %d): %v", userID, conversationID, err)
+		conn.Close()
+		return
+	}
 	go client.write()
 	go client.read()
 }
