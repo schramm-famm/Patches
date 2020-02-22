@@ -28,10 +28,6 @@ func NewEnv(db models.Datastore, rc *http.Client) *Env {
 	}
 }
 
-const (
-	conversationContentRoute = "/ether/v1/converstions/%d/content"
-)
-
 var upgrader = gorillaws.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
