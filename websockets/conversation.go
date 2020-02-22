@@ -7,6 +7,7 @@ import (
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
+// Conversation manages all WebSocket connections in a single conversation.
 type Conversation struct {
 	conversationID int64
 	doc            string
@@ -18,6 +19,7 @@ type Conversation struct {
 	broadcast  chan *Message
 }
 
+// Message stores the content and sender of a message.
 type Message struct {
 	content []byte
 	sender  *Client
@@ -25,6 +27,7 @@ type Message struct {
 
 var dmp *diffmatchpatch.DiffMatchPatch = diffmatchpatch.New()
 
+// NewConversation creates a new Conversation struct.
 func NewConversation(conversationID int64, doc string, broker *Broker) *Conversation {
 	return &Conversation{
 		conversationID: conversationID,
@@ -37,6 +40,9 @@ func NewConversation(conversationID int64, doc string, broker *Broker) *Conversa
 	}
 }
 
+// Run waits on a Conversation's three channels for clients to be added, clients
+// to be removed, and messages to be broadcast. Only one of these operations may
+// be performed at a time.
 func (c *Conversation) Run() {
 	for {
 		select {

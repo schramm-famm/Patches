@@ -14,12 +14,14 @@ import (
 	gorillaws "github.com/gorilla/websocket"
 )
 
+// Env represents all application-level items that are needed by handlers.
 type Env struct {
 	DB       models.Datastore
 	RC       *http.Client
 	WSBroker *websockets.Broker
 }
 
+// NewEnv creates a new Env struct.
 func NewEnv(db models.Datastore, rc *http.Client) *Env {
 	return &Env{
 		DB:       db,
@@ -34,7 +36,7 @@ var upgrader = gorillaws.Upgrader{
 	},
 }
 
-// Get patches from the database with filtering
+// GetPatchesHandler gets patches from the database with filtering.
 func (env *Env) GetPatchesHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		errMsg := "Error reading request:" + err.Error()
@@ -71,6 +73,7 @@ func (env *Env) GetPatchesHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(patches)
 }
 
+// ConnectHandler establishes a WebSocket connection with the client.
 func (env *Env) ConnectHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	conversationID, err := strconv.ParseInt(vars["conversation_id"], 10, 64)

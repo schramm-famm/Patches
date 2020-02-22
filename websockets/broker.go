@@ -25,11 +25,14 @@ const (
 var heimdallHost = os.Getenv("HEIMDALL_HOST")
 var etherHost = os.Getenv("ETHER_HOST")
 
+// ConvoData represents a conversation and its associated clients.
 type ConvoData struct {
 	conversation *Conversation
 	clients      map[*Client]bool
 }
 
+// Broker is the single entrypoint for registering and unregistering all
+// client connections.
 type Broker struct {
 	sync.Mutex
 	active     map[int64]*ConvoData
@@ -37,6 +40,7 @@ type Broker struct {
 	httpClient *http.Client
 }
 
+// NewBroker creates a new Broker struct.
 func NewBroker(db models.Datastore, httpClient *http.Client) *Broker {
 	return &Broker{
 		active:     make(map[int64]*ConvoData),
@@ -45,12 +49,16 @@ func NewBroker(db models.Datastore, httpClient *http.Client) *Broker {
 	}
 }
 
+// register adds a client connection to an active conversation.
 func (b *Broker) register(userID, conversationID int64, conn *gorillaws.Conn) (*Client, error) {
 	b.Lock()
 	defer b.Unlock()
 
 	cd, ok := b.active[conversationID]
 	if !ok {
+		// If this is the first client connection in this conversation, then get
+		// the HTML content and create a new Conversation struct to manage the
+		// conversation
 		content, err := b.getConversationContent(userID, conversationID)
 		if err != nil {
 			return nil, err
@@ -70,6 +78,7 @@ func (b *Broker) register(userID, conversationID int64, conn *gorillaws.Conn) (*
 	return client, nil
 }
 
+// unregister removes a client connection from its associated conversation.
 func (b *Broker) unregister(client *Client) {
 	b.Lock()
 	defer b.Unlock()
@@ -86,6 +95,8 @@ func (b *Broker) unregister(client *Client) {
 	}
 }
 
+// validate token checks with Heimdall whether a token is authentic and returns
+// the embedded user ID if it is.
 func (b *Broker) validateToken(token string) (int64, error) {
 	reqBody, err := json.Marshal(map[string]string{
 		"token": token,
@@ -120,6 +131,7 @@ func (b *Broker) validateToken(token string) (int64, error) {
 	return resBody.UserID, nil
 }
 
+// getConversationContent gets the HTML content of a conversation from Ether.
 func (b *Broker) getConversationContent(userID, conversationID int64) (string, error) {
 	req, err := http.NewRequest("GET", "http://"+etherHost+fmt.Sprintf(contentRoute, conversationID), nil)
 	if err != nil {
@@ -145,6 +157,9 @@ func (b *Broker) getConversationContent(userID, conversationID int64) (string, e
 	return string(content), nil
 }
 
+// StartClient authenticates a WebSocket connection before registering the
+// connection and starting goroutines for reading to and writing from the
+// connection.
 func (b *Broker) StartClient(conversationID int64, conn *gorillaws.Conn) {
 	// Wait for client to send token through the WebSocket connection
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))

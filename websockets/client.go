@@ -6,6 +6,7 @@ import (
 	gorillaws "github.com/gorilla/websocket"
 )
 
+// Client manages a WebSocket connection with a client.
 type Client struct {
 	userID       int64
 	conn         *gorillaws.Conn
@@ -14,6 +15,7 @@ type Client struct {
 	send         chan []byte
 }
 
+// NewClient creates a new Client struct.
 func NewClient(userID int64, conn *gorillaws.Conn, conversation *Conversation, broker *Broker) *Client {
 	return &Client{
 		userID:       userID,
@@ -24,6 +26,8 @@ func NewClient(userID int64, conn *gorillaws.Conn, conversation *Conversation, b
 	}
 }
 
+// read consumes messages from the WebSocket connection and sends them to the
+// associated conversation to be broadcast.
 func (c *Client) read() {
 	defer func() {
 		c.conn.Close()
@@ -43,6 +47,8 @@ func (c *Client) read() {
 	}
 }
 
+// write sends messages to the WebSocket connection whenever new messages are
+// sent into the Client's channel.
 func (c *Client) write() {
 	for {
 		message, ok := <-c.send
