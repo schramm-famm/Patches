@@ -194,7 +194,5 @@ func (env *Env) ConnectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Println("here?")
-	client := env.WSBroker.CreateClient(conversationID, c)
-	go client.Run()
+	go env.WSBroker.StartClient(conversationID, c)
 }
