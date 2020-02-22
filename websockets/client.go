@@ -26,6 +26,7 @@ func NewClient(userID int64, conn *gorillaws.Conn, conversation *Conversation, b
 
 func (c *Client) read() {
 	defer func() {
+		c.conn.Close()
 		c.broker.unregister(c)
 	}()
 

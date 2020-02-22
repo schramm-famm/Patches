@@ -112,10 +112,6 @@ func (b *Broker) validateToken(token string) (int64, error) {
 }
 
 func (b *Broker) StartClient(conversationID int64, conn *gorillaws.Conn) {
-	defer func() {
-		conn.Close()
-	}()
-
 	// Wait for client to send token through the WebSocket connection
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	_, message, err := conn.ReadMessage()
@@ -127,6 +123,7 @@ func (b *Broker) StartClient(conversationID int64, conn *gorillaws.Conn) {
 		if gorillaws.IsUnexpectedCloseError(err, gorillaws.CloseGoingAway, gorillaws.CloseAbnormalClosure) {
 			log.Printf("WebSocket closed unexpectedly: %v", err)
 		}
+		conn.Close()
 		return
 	}
 	conn.SetReadDeadline(time.Time{})
@@ -136,11 +133,12 @@ func (b *Broker) StartClient(conversationID int64, conn *gorillaws.Conn) {
 	userID, err := b.validateToken(token)
 	if err != nil {
 		log.Print("Failed to validate token: ", err)
+		conn.Close()
 		return
 	}
 
 	// Create client struct with the user ID and start reading/writing patches
 	client := b.register(userID, conversationID, conn)
 	go client.write()
-	client.read()
+	go client.read()
 }
