@@ -64,10 +64,12 @@ func (db *DB) GetPatches(filter *Filter) ([]Patch, error) {
 	}
 
 	if !filter.EndTime.IsZero() {
-		fmt.Fprintf(filterString, " AND time <= %s", filter.EndTime)
+		t := filter.EndTime.Format("2006-01-02 15:04:05")
+		fmt.Fprintf(filterString, " AND time <= '%s'", t)
 	}
 	if !filter.StartTime.IsZero() {
-		fmt.Fprintf(filterString, " AND time >= %s", filter.StartTime)
+		t := filter.StartTime.Format("2006-01-02 15:04:05")
+		fmt.Fprintf(filterString, " AND time >= '%s'", t)
 	}
 
 	// Create query string with filters
