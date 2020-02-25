@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"patches/models"
+	"strconv"
 	"sync"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 
 const (
 	authRoute    = "/heimdall/v1/token/auth"
+	memberRoute  = "/ether/v1/conversations/%d/users/%d"
 	contentRoute = "/ether/v1/conversations/%d/content"
 )
 
@@ -50,29 +52,29 @@ func NewBroker(db models.Datastore, httpClient *http.Client) *Broker {
 }
 
 // register adds a client connection to an active conversation.
-func (b *Broker) register(userID, conversationID int64, conn *gorillaws.Conn) (*Client, error) {
+func (b *Broker) register(member *models.UserConversationMapping, conn *gorillaws.Conn) (*Client, error) {
 	b.Lock()
 	defer b.Unlock()
 
-	cd, ok := b.active[conversationID]
+	cd, ok := b.active[member.ConversationID]
 	if !ok {
 		// If this is the first client connection in this conversation, then get
 		// the HTML content and create a new Conversation struct to manage the
 		// conversation
-		content, err := b.getConversationContent(userID, conversationID)
+		content, err := b.getConversationContent(member.UserID, member.ConversationID)
 		if err != nil {
 			return nil, err
 		}
 
 		cd = &ConvoData{
-			conversation: NewConversation(conversationID, content, b),
+			conversation: NewConversation(member.ConversationID, content, b),
 			clients:      make(map[*Client]bool),
 		}
 		go cd.conversation.Run()
-		b.active[conversationID] = cd
+		b.active[member.ConversationID] = cd
 	}
 
-	client := NewClient(userID, conn, cd.conversation, b)
+	client := NewClient(member.UserID, conn, cd.conversation, b)
 	cd.clients[client] = true
 	cd.conversation.register <- client
 	return client, nil
@@ -131,12 +133,39 @@ func (b *Broker) validateToken(token string) (int64, error) {
 	return resBody.UserID, nil
 }
 
+func (b *Broker) getConversationMember(userID, conversationID int64) (*models.UserConversationMapping, error) {
+	req, err := http.NewRequest("GET", "http://"+etherHost+fmt.Sprintf(memberRoute, conversationID, userID), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-ID", strconv.FormatInt(userID, 10))
+	res, err := b.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if res.StatusCode != http.StatusNotFound && res.StatusCode != http.StatusOK {
+		return nil, errors.New("Failed to get conversation member")
+	} else if res.StatusCode == http.StatusNotFound {
+		return nil, errors.New("Conversation/member not found")
+	}
+
+	resBody := models.UserConversationMapping{}
+	defer res.Body.Close()
+	if err := json.NewDecoder(res.Body).Decode(&resBody); err != nil {
+		return nil, err
+	}
+
+	return &resBody, nil
+}
+
 // getConversationContent gets the HTML content of a conversation from Ether.
 func (b *Broker) getConversationContent(userID, conversationID int64) (string, error) {
 	req, err := http.NewRequest("GET", "http://"+etherHost+fmt.Sprintf(contentRoute, conversationID), nil)
 	if err != nil {
 		return "", err
 	}
+	req.Header.Set("User-ID", strconv.FormatInt(userID, 10))
 	res, err := b.httpClient.Do(req)
 	if err != nil {
 		return "", err
@@ -186,8 +215,20 @@ func (b *Broker) StartClient(conversationID int64, conn *gorillaws.Conn) {
 		return
 	}
 
+	member, err := b.getConversationMember(userID, conversationID)
+	if err != nil {
+		log.Printf(
+			"Failed to validate conversation member (user: %d, conversation: %d): %v",
+			userID,
+			conversationID,
+			err,
+		)
+		conn.Close()
+		return
+	}
+
 	// Create client struct with the user ID and start reading/writing patches
-	client, err := b.register(userID, conversationID, conn)
+	client, err := b.register(member, conn)
 	if err != nil {
 		log.Printf("Failed to create a new client (user: %d, conversation: %d): %v", userID, conversationID, err)
 		conn.Close()
