@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
-	"github.com/gorilla/mux"
 	"log"
 	"net/http"
 	"os"
 	"patches/handlers"
 	"patches/models"
 	"time"
+
+	"github.com/gorilla/mux"
 )
 
 func main() {
@@ -25,11 +26,12 @@ func main() {
 		return
 	}
 
-	env := &handlers.Env{db}
+	env := handlers.NewEnv(db, &http.Client{Timeout: time.Second * 10})
 
 	httpMux := mux.NewRouter()
 
 	httpMux.HandleFunc("/patches/v1/patches", env.GetPatchesHandler).Methods("GET")
+	httpMux.HandleFunc("/patches/v1/connect/{conversation_id:[0-9]+}", env.ConnectHandler).Methods("GET")
 
 	httpSrv := &http.Server{
 		Addr:         ":80",
