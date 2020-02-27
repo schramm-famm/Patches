@@ -24,8 +24,10 @@ const (
 	contentRoute = "/ether/v1/conversations/%d/content"
 )
 
-var heimdallHost = os.Getenv("HEIMDALL_HOST")
-var etherHost = os.Getenv("ETHER_HOST")
+var (
+	heimdallHost = os.Getenv("HEIMDALL_HOST")
+	etherHost = os.Getenv("ETHER_HOST")
+)
 
 // ConvoData represents a conversation and its associated clients.
 type ConvoData struct {
