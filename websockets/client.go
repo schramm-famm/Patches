@@ -8,21 +8,22 @@ import (
 
 // Client manages a WebSocket connection with a client.
 type Client struct {
-	userID       int64
-	conn         *gorillaws.Conn
-	conversation *Conversation
-	broker       *Broker
-	send         chan []byte
+	userID         int64
+	conversationID int64
+	conn           *gorillaws.Conn
+	broker         *Broker
+	broadcast      chan<- *Message
+	send           <-chan []byte
 }
 
 // NewClient creates a new Client struct.
-func NewClient(userID int64, conn *gorillaws.Conn, conversation *Conversation, broker *Broker) *Client {
+func NewClient(userID int64, conn *gorillaws.Conn, broadcast chan<- *Message, broker *Broker) *Client {
 	return &Client{
-		userID:       userID,
-		conn:         conn,
-		conversation: conversation,
-		broker:       broker,
-		send:         make(chan []byte),
+		userID:    userID,
+		conn:      conn,
+		broadcast: broadcast,
+		broker:    broker,
+		send:      make(chan []byte),
 	}
 }
 
@@ -43,7 +44,7 @@ func (c *Client) read() {
 			break
 		}
 
-		c.conversation.broadcast <- &Message{data, c}
+		c.broadcast <- &Message{data, c}
 	}
 }
 
