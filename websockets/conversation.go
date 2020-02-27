@@ -12,7 +12,6 @@ type Conversation struct {
 	conversationID int64
 	doc            string
 	clients        map[*Client]bool
-	broker         *Broker
 
 	register   chan *Client
 	unregister chan *Client
@@ -28,12 +27,11 @@ type Message struct {
 var dmp *diffmatchpatch.DiffMatchPatch = diffmatchpatch.New()
 
 // NewConversation creates a new Conversation struct.
-func NewConversation(conversationID int64, doc string, broker *Broker) *Conversation {
+func NewConversation(conversationID int64, doc string) *Conversation {
 	return &Conversation{
 		conversationID: conversationID,
 		doc:            doc,
 		clients:        make(map[*Client]bool),
-		broker:         broker,
 		register:       make(chan *Client),
 		unregister:     make(chan *Client),
 		broadcast:      make(chan *Message),
@@ -47,11 +45,13 @@ func (c *Conversation) Run() {
 	for {
 		select {
 		case client := <-c.register:
-			c.clients[client] = true
 			err := client.conn.WriteMessage(gorillaws.TextMessage, []byte(c.doc))
 			if err != nil {
-				return
+				log.Print("Failed to send initial conversation data: ", err)
+				close(client.send)
+				continue
 			}
+			c.clients[client] = true
 			log.Printf("Registered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
 
 		case client := <-c.unregister:
@@ -71,9 +71,19 @@ func (c *Conversation) Run() {
 
 			patches, err := dmp.PatchFromText(string(message.content))
 			if err != nil {
-				return
+				log.Printf("Failed to create patch from %s: %v", message.content, err)
+				close(message.sender.send)
+				continue
 			}
-			c.doc, _ = dmp.PatchApply(patches, c.doc)
+			newDoc, okList := dmp.PatchApply(patches, c.doc)
+			for i, ok := range okList {
+				if !ok {
+					log.Printf("Failed to apply patch %+v", patches[i])
+					close(message.sender.send)
+					continue
+				}
+			}
+			c.doc = newDoc
 
 			for client := range c.clients {
 				if client != message.sender {
