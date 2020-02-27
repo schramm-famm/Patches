@@ -76,7 +76,7 @@ func (b *Broker) register(member *models.UserConversationMapping, conn *gorillaw
 		b.active[member.ConversationID] = cd
 	}
 
-	client := NewClient(member.UserID, conn, cd.conversation.broadcast, b)
+	client := NewClient(member.UserID, member.ConversationID, conn, b, cd.conversation.broadcast)
 	cd.clients[client] = true
 	cd.conversation.register <- client
 	return client, nil
@@ -96,6 +96,8 @@ func (b *Broker) unregister(client *Client) {
 			delete(b.active, conversationID)
 			close(cd.conversation.broadcast)
 		}
+	} else {
+		log.Printf("Tried to unregister user %d in inactive conversation %d", client.userID, client.conversationID)
 	}
 }
 

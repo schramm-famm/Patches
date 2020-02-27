@@ -13,17 +13,18 @@ type Client struct {
 	conn           *gorillaws.Conn
 	broker         *Broker
 	broadcast      chan<- *Message
-	send           <-chan []byte
+	send           chan []byte
 }
 
 // NewClient creates a new Client struct.
-func NewClient(userID int64, conn *gorillaws.Conn, broadcast chan<- *Message, broker *Broker) *Client {
+func NewClient(userID, conversationID int64, conn *gorillaws.Conn, broker *Broker, broadcast chan<- *Message) *Client {
 	return &Client{
-		userID:    userID,
-		conn:      conn,
-		broadcast: broadcast,
-		broker:    broker,
-		send:      make(chan []byte),
+		userID:         userID,
+		conversationID: conversationID,
+		conn:           conn,
+		broadcast:      broadcast,
+		broker:         broker,
+		send:           make(chan []byte),
 	}
 }
 
@@ -54,6 +55,7 @@ func (c *Client) write() {
 	for message := range c.send {
 		err := c.conn.WriteMessage(gorillaws.TextMessage, message)
 		if err != nil {
+			log.Print("Failed to write message to WebSocket: ", err)
 			return
 		}
 	}
