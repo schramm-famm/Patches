@@ -50,15 +50,11 @@ func (c *Client) read() {
 // write sends messages to the WebSocket connection whenever new messages are
 // sent into the Client's channel.
 func (c *Client) write() {
-	for message, ok := range c.send {
-		if !ok {
-			c.conn.WriteMessage(gorillaws.CloseMessage, []byte{})
-			return
-		}
-
+	for message := range c.send {
 		err := c.conn.WriteMessage(gorillaws.TextMessage, message)
 		if err != nil {
 			return
 		}
 	}
+	c.conn.WriteMessage(gorillaws.CloseMessage, []byte{})
 }
