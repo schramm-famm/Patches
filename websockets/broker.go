@@ -26,7 +26,7 @@ const (
 
 var (
 	heimdallHost = os.Getenv("HEIMDALL_HOST")
-	etherHost = os.Getenv("ETHER_HOST")
+	etherHost    = os.Getenv("ETHER_HOST")
 )
 
 // ConvoData represents a conversation and its associated clients.
@@ -69,14 +69,14 @@ func (b *Broker) register(member *models.UserConversationMapping, conn *gorillaw
 		}
 
 		cd = &ConvoData{
-			conversation: NewConversation(member.ConversationID, content, b),
+			conversation: NewConversation(member.ConversationID, content),
 			clients:      make(map[*Client]bool),
 		}
 		go cd.conversation.Run()
 		b.active[member.ConversationID] = cd
 	}
 
-	client := NewClient(member.UserID, conn, cd.conversation, b)
+	client := NewClient(member.UserID, conn, cd.conversation.broadcast, b)
 	cd.clients[client] = true
 	cd.conversation.register <- client
 	return client, nil
@@ -87,14 +87,14 @@ func (b *Broker) unregister(client *Client) {
 	b.Lock()
 	defer b.Unlock()
 
-	conversationID := client.conversation.conversationID
+	conversationID := client.conversationID
 	cd, ok := b.active[conversationID]
 	if ok {
-		client.conversation.unregister <- client
+		cd.conversation.unregister <- client
 		delete(cd.clients, client)
 		if len(cd.clients) == 0 {
 			delete(b.active, conversationID)
-			close(client.conversation.broadcast)
+			close(cd.conversation.broadcast)
 		}
 	}
 }
