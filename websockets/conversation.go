@@ -59,6 +59,8 @@ func (c *Conversation) Run() {
 				delete(c.clients, client)
 				close(client.send)
 				log.Printf("Deregistered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
+			} else {
+				log.Printf("Attempted to deregister an inactive client in conversation %d", c.conversationID)
 			}
 
 		case message, ok := <-c.broadcast:
@@ -69,17 +71,25 @@ func (c *Conversation) Run() {
 				return
 			}
 
+			if _, ok := c.clients[message.sender]; !ok {
+				continue
+			}
+
 			patches, err := dmp.PatchFromText(string(message.content))
 			if err != nil {
 				log.Printf("Failed to create patch from %s: %v", message.content, err)
+				delete(c.clients, message.sender)
 				close(message.sender.send)
+				log.Printf("Deregistered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
 				continue
 			}
 			newDoc, okList := dmp.PatchApply(patches, c.doc)
 			for i, ok := range okList {
 				if !ok {
 					log.Printf("Failed to apply patch %+v", patches[i])
+					delete(c.clients, message.sender)
 					close(message.sender.send)
+					log.Printf("Deregistered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
 					continue
 				}
 			}
