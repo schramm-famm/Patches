@@ -1,7 +1,11 @@
 package websockets
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
+	"patches/models"
 
 	gorillaws "github.com/gorilla/websocket"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -12,6 +16,7 @@ type Conversation struct {
 	conversationID int64
 	doc            string
 	clients        map[*Client]bool
+	version        int
 
 	register   chan *Client
 	unregister chan *Client
@@ -32,6 +37,7 @@ func NewConversation(conversationID int64, doc string) *Conversation {
 		conversationID: conversationID,
 		doc:            doc,
 		clients:        make(map[*Client]bool),
+		version:        0,
 		register:       make(chan *Client),
 		unregister:     make(chan *Client),
 		broadcast:      make(chan *Message),
@@ -44,6 +50,34 @@ func (c *Conversation) deleteClient(client *Client) {
 	log.Printf("Deregistered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
 }
 
+func (c *Conversation) processUpdate(update *models.Update) (bool, error) {
+	if update.Version < 1 {
+		errMsg := fmt.Sprintf("Update has invalid version number %d", update.Version)
+		return false, errors.New(errMsg)
+	}
+
+	patches, err := dmp.PatchFromText(update.Patch)
+	if err != nil {
+		return false, err
+	}
+	if len(patches) != 1 {
+		errMsg := "Update must contain one patch"
+		return false, errors.New(errMsg)
+	}
+
+	newDoc, okList := dmp.PatchApply(patches, c.doc)
+	if !okList[0] {
+		return false, nil
+	}
+	c.doc = newDoc
+
+	if update.Version != c.version+1 {
+		update.Version = c.version + 1
+	}
+
+	return true, nil
+}
+
 // Run waits on a Conversation's three channels for clients to be added, clients
 // to be removed, and messages to be broadcast. Only one of these operations may
 // be performed at a time.
@@ -51,7 +85,18 @@ func (c *Conversation) Run() {
 	for {
 		select {
 		case client := <-c.register:
-			err := client.conn.WriteMessage(gorillaws.TextMessage, []byte(c.doc))
+			init := models.Init{
+				Content: &c.doc,
+				Version: c.version,
+			}
+			initMessage, err := json.Marshal(init)
+			if err != nil {
+				log.Print("Failed to encode initial conversation data: ", err)
+				close(client.send)
+				continue
+			}
+
+			err = client.conn.WriteMessage(gorillaws.TextMessage, initMessage)
 			if err != nil {
 				log.Print("Failed to send initial conversation data: ", err)
 				close(client.send)
@@ -79,25 +124,34 @@ func (c *Conversation) Run() {
 				continue
 			}
 
-			patches, err := dmp.PatchFromText(string(message.content))
-			if err != nil {
-				log.Printf("Failed to create patch from %s: %v", message.content, err)
+			update := models.Update{}
+			if err := json.Unmarshal(message.content, &update); err != nil {
+				log.Printf("Failed to parse WebSocket message content: %v", err)
 				c.deleteClient(message.sender)
 				continue
 			}
-			newDoc, okList := dmp.PatchApply(patches, c.doc)
-			for i, ok := range okList {
-				if !ok {
-					log.Printf("Failed to apply patch %+v", patches[i])
+
+			originalVersion := update.Version
+			ok, err := c.processUpdate(&update)
+			if err != nil {
+				log.Printf("Failed to apply update: %v", err)
+				c.deleteClient(message.sender)
+				continue
+			}
+
+			broadcastMessage := message.content
+			if update.Version != originalVersion {
+				broadcastMessage, err = json.Marshal(update)
+				if err != nil {
+					log.Printf("Failed to encode update as byte array: %v", err)
 					c.deleteClient(message.sender)
 					continue
 				}
 			}
-			c.doc = newDoc
 
 			for client := range c.clients {
 				if client != message.sender {
-					client.send <- message.content
+					client.send <- broadcastMessage
 				}
 			}
 		}
