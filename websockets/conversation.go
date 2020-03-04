@@ -138,6 +138,10 @@ func (c *Conversation) Run() {
 				c.deleteClient(message.sender)
 				continue
 			}
+			if !ok {
+				log.Printf("Patch %s could not be applied", update.Patch)
+				continue
+			}
 
 			broadcastMessage := message.content
 			if update.Version != originalVersion {
