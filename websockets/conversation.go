@@ -74,6 +74,7 @@ func (c *Conversation) processUpdate(update *models.Update) (bool, error) {
 	if update.Version != c.version+1 {
 		update.Version = c.version + 1
 	}
+	c.version++
 
 	return true, nil
 }
