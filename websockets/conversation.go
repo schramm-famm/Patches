@@ -57,34 +57,46 @@ func (c *Conversation) processMessage(msg *models.Message) (bool, error) {
 	}
 
 	update := msg.Data
+	switch *update.Type {
+	case models.UpdateTypeEdit:
+		if update.Type == nil || update.Version == nil || update.Patch == nil || update.CursorDelta == nil {
+			errMsg := fmt.Sprintf(`Update is missing required fields in "data"`)
+			return false, errors.New(errMsg)
+		}
 
-	if update.Type == nil || update.Version == nil || update.Patch == nil || update.CursorDelta == nil {
-		errMsg := fmt.Sprintf(`Update is missing required fields in "data"`)
+		if *update.Version < 1 {
+			errMsg := fmt.Sprintf("Update has invalid version number %d", update.Version)
+			return false, errors.New(errMsg)
+		}
+
+		patches, err := dmp.PatchFromText(*update.Patch)
+		if err != nil {
+			return false, err
+		}
+		if len(patches) != 1 {
+			errMsg := "Update must contain one patch"
+			return false, errors.New(errMsg)
+		}
+
+		newDoc, okList := dmp.PatchApply(patches, c.doc)
+		if !okList[0] {
+			return false, nil
+		}
+		c.doc = newDoc
+
+		if *update.Version != c.version+1 {
+			*update.Version = c.version + 1
+		}
+
+	case models.UpdateTypeCursor:
+		if update.Type == nil || update.CursorDelta == nil {
+			errMsg := fmt.Sprintf(`Update is missing required fields in "data"`)
+			return false, errors.New(errMsg)
+		}
+
+	default:
+		errMsg := fmt.Sprintf("Update has invalid sub-type %d", update.Type)
 		return false, errors.New(errMsg)
-	}
-
-	if *update.Version < 1 {
-		errMsg := fmt.Sprintf("Update has invalid version number %d", update.Version)
-		return false, errors.New(errMsg)
-	}
-
-	patches, err := dmp.PatchFromText(*update.Patch)
-	if err != nil {
-		return false, err
-	}
-	if len(patches) != 1 {
-		errMsg := "Update must contain one patch"
-		return false, errors.New(errMsg)
-	}
-
-	newDoc, okList := dmp.PatchApply(patches, c.doc)
-	if !okList[0] {
-		return false, nil
-	}
-	c.doc = newDoc
-
-	if *update.Version != c.version+1 {
-		*update.Version = c.version + 1
 	}
 
 	return true, nil
@@ -191,7 +203,7 @@ func (c *Conversation) Run() {
 			originalVersion := *msg.Data.Version
 			ok, err := c.processMessage(&msg)
 			if err != nil {
-				log.Printf("Failed to apply update: %v", err)
+				log.Printf("Failed to process update: %v", err)
 				c.deleteClient(message.sender)
 				continue
 			}
@@ -216,19 +228,21 @@ func (c *Conversation) Run() {
 			c.version++
 			message.sender.position += *msg.Data.CursorDelta
 
-			ackMessage := models.Message{
-				Type: models.TypeAck,
-				Data: models.InnerData{
-					Version: &originalVersion,
-				},
+			if *msg.Data.Type == models.UpdateTypeEdit {
+				ackMessage := models.Message{
+					Type: models.TypeAck,
+					Data: models.InnerData{
+						Version: &originalVersion,
+					},
+				}
+				ackMessageBytes, err := json.Marshal(ackMessage)
+				if err != nil {
+					log.Printf("Failed to encode acknowledge message as byte array: %v", err)
+					c.deleteClient(message.sender)
+					continue
+				}
+				message.sender.send <- ackMessageBytes
 			}
-			ackMessageBytes, err := json.Marshal(ackMessage)
-			if err != nil {
-				log.Printf("Failed to encode acknowledge message as byte array: %v", err)
-				c.deleteClient(message.sender)
-				continue
-			}
-			message.sender.send <- ackMessageBytes
 		}
 	}
 }

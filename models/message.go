@@ -15,7 +15,8 @@ const (
 	TypeUserJoin  MessageType = 3
 	TypeUserLeave MessageType = 4
 
-	TypeEdit UpdateType = 0
+	UpdateTypeEdit   UpdateType = 0
+	UpdateTypeCursor UpdateType = 1
 )
 
 type InnerData struct {
