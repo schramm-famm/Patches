@@ -79,7 +79,7 @@ func (c *Conversation) processMessage(msg *models.Message) (bool, error) {
 	c.doc = newDoc
 
 	if *update.Version != c.version+1 {
-		update.Version = utils.IntPtr(c.version + 1)
+		*update.Version = c.version + 1
 	}
 
 	return true, nil
@@ -141,7 +141,7 @@ func (c *Conversation) Run() {
 				continue
 			}
 
-			originalVersion := msg.Data.Version
+			originalVersion := *msg.Data.Version
 			ok, err := c.processMessage(&msg)
 			if err != nil {
 				log.Printf("Failed to apply update: %v", err)
@@ -154,7 +154,7 @@ func (c *Conversation) Run() {
 			}
 
 			broadcastMessageBytes := message.content
-			if msg.Data.Version != originalVersion {
+			if *msg.Data.Version != originalVersion {
 				broadcastMessageBytes, err = json.Marshal(msg)
 				if err != nil {
 					log.Printf("Failed to encode update as byte array: %v", err)
@@ -173,7 +173,7 @@ func (c *Conversation) Run() {
 			ackMessage := models.Message{
 				Type: models.TypeAck,
 				Data: models.InnerData{
-					Version: originalVersion,
+					Version: &originalVersion,
 				},
 			}
 			ackMessageBytes, err := json.Marshal(ackMessage)
