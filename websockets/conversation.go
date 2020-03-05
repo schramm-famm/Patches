@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"patches/models"
+	"patches/utils"
 
 	gorillaws "github.com/gorilla/websocket"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -50,13 +51,19 @@ func (c *Conversation) deleteClient(client *Client) {
 	log.Printf("Deregistered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
 }
 
-func (c *Conversation) processUpdate(update *models.Update) (bool, error) {
-	if update.Version < 1 {
+func (c *Conversation) processMessage(msg *models.Message) (bool, error) {
+	if msg.Type != models.TypeUpdate {
+		errMsg := fmt.Sprintf("Message is not of type %d", models.TypeUpdate)
+		return false, errors.New(errMsg)
+	}
+
+	update := msg.Data
+	if *update.Version < 1 {
 		errMsg := fmt.Sprintf("Update has invalid version number %d", update.Version)
 		return false, errors.New(errMsg)
 	}
 
-	patches, err := dmp.PatchFromText(update.Patch)
+	patches, err := dmp.PatchFromText(*update.Patch)
 	if err != nil {
 		return false, err
 	}
@@ -71,10 +78,9 @@ func (c *Conversation) processUpdate(update *models.Update) (bool, error) {
 	}
 	c.doc = newDoc
 
-	if update.Version != c.version+1 {
-		update.Version = c.version + 1
+	if *update.Version != c.version+1 {
+		*update.Version = c.version + 1
 	}
-	c.version++
 
 	return true, nil
 }
@@ -86,9 +92,12 @@ func (c *Conversation) Run() {
 	for {
 		select {
 		case client := <-c.register:
-			init := models.Init{
-				Content: &c.doc,
-				Version: c.version,
+			init := models.Message{
+				Type: models.TypeInit,
+				Data: models.InnerData{
+					Version: utils.IntPtr(c.version),
+					Content: &c.doc,
+				},
 			}
 			initMessage, err := json.Marshal(init)
 			if err != nil {
@@ -125,28 +134,28 @@ func (c *Conversation) Run() {
 				continue
 			}
 
-			update := models.Update{}
-			if err := json.Unmarshal(message.content, &update); err != nil {
+			msg := models.Message{}
+			if err := json.Unmarshal(message.content, &msg); err != nil {
 				log.Printf("Failed to parse WebSocket message content: %v", err)
 				c.deleteClient(message.sender)
 				continue
 			}
 
-			originalVersion := update.Version
-			ok, err := c.processUpdate(&update)
+			originalVersion := *msg.Data.Version
+			ok, err := c.processMessage(&msg)
 			if err != nil {
 				log.Printf("Failed to apply update: %v", err)
 				c.deleteClient(message.sender)
 				continue
 			}
 			if !ok {
-				log.Printf("Patch %s could not be applied", update.Patch)
+				log.Printf("Patch %s could not be applied", *msg.Data.Patch)
 				continue
 			}
 
-			broadcastMessage := message.content
-			if update.Version != originalVersion {
-				broadcastMessage, err = json.Marshal(update)
+			broadcastMessageBytes := message.content
+			if *msg.Data.Version != originalVersion {
+				broadcastMessageBytes, err = json.Marshal(msg)
 				if err != nil {
 					log.Printf("Failed to encode update as byte array: %v", err)
 					c.deleteClient(message.sender)
@@ -156,9 +165,24 @@ func (c *Conversation) Run() {
 
 			for client := range c.clients {
 				if client != message.sender {
-					client.send <- broadcastMessage
+					client.send <- broadcastMessageBytes
 				}
 			}
+			c.version++
+
+			ackMessage := models.Message{
+				Type: models.TypeAck,
+				Data: models.InnerData{
+					Version: &originalVersion,
+				},
+			}
+			ackMessageBytes, err := json.Marshal(ackMessage)
+			if err != nil {
+				log.Printf("Failed to encode update as byte array: %v", err)
+				c.deleteClient(message.sender)
+				continue
+			}
+			message.sender.send <- ackMessageBytes
 		}
 	}
 }
