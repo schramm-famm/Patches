@@ -50,37 +50,42 @@ func (c *Conversation) deleteClient(client *Client) {
 	log.Printf("Deregistered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
 }
 
-func (c *Conversation) processMessage(msg *models.Message) (bool, error) {
+func (c *Conversation) processMessage(msg models.Message) (*models.Message, error) {
 	if msg.Type != models.TypeUpdate {
 		errMsg := fmt.Sprintf("Message is not of type %d", models.TypeUpdate)
-		return false, errors.New(errMsg)
+		return nil, errors.New(errMsg)
 	}
 
 	update := msg.Data
+	if update.Type == nil {
+		errMsg := fmt.Sprintf(`Update is missing required "type" field in "data"`)
+		return nil, errors.New(errMsg)
+	}
+
 	switch *update.Type {
 	case models.UpdateTypeEdit:
 		if update.Type == nil || update.Version == nil || update.Patch == nil || update.CursorDelta == nil {
-			errMsg := fmt.Sprintf(`Update is missing required fields in "data"`)
-			return false, errors.New(errMsg)
+			errMsg := fmt.Sprintf(`Update (EDIT) is missing required fields in "data"`)
+			return nil, errors.New(errMsg)
 		}
 
 		if *update.Version < 1 {
 			errMsg := fmt.Sprintf("Update has invalid version number %d", update.Version)
-			return false, errors.New(errMsg)
+			return nil, errors.New(errMsg)
 		}
 
 		patches, err := dmp.PatchFromText(*update.Patch)
 		if err != nil {
-			return false, err
+			return nil, err
 		}
 		if len(patches) != 1 {
 			errMsg := "Update must contain one patch"
-			return false, errors.New(errMsg)
+			return nil, errors.New(errMsg)
 		}
 
 		newDoc, okList := dmp.PatchApply(patches, c.doc)
 		if !okList[0] {
-			return false, nil
+			return nil, nil
 		}
 		c.doc = newDoc
 
@@ -90,16 +95,16 @@ func (c *Conversation) processMessage(msg *models.Message) (bool, error) {
 
 	case models.UpdateTypeCursor:
 		if update.Type == nil || update.CursorDelta == nil {
-			errMsg := fmt.Sprintf(`Update is missing required fields in "data"`)
-			return false, errors.New(errMsg)
+			errMsg := fmt.Sprintf(`Update (CURSOR) is missing required fields in "data"`)
+			return nil, errors.New(errMsg)
 		}
 
 	default:
 		errMsg := fmt.Sprintf("Update has invalid sub-type %d", update.Type)
-		return false, errors.New(errMsg)
+		return nil, errors.New(errMsg)
 	}
 
-	return true, nil
+	return &msg, nil
 }
 
 // Run waits on a Conversation's three channels for clients to be added, clients
@@ -200,14 +205,13 @@ func (c *Conversation) Run() {
 				continue
 			}
 
-			originalVersion := *msg.Data.Version
-			ok, err := c.processMessage(&msg)
+			newMsg, err := c.processMessage(msg)
 			if err != nil {
 				log.Printf("Failed to process update: %v", err)
 				c.deleteClient(message.sender)
 				continue
 			}
-			if !ok {
+			if newMsg == nil {
 				log.Printf("Patch %s could not be applied", *msg.Data.Patch)
 				continue
 			}
@@ -232,7 +236,7 @@ func (c *Conversation) Run() {
 				ackMessage := models.Message{
 					Type: models.TypeAck,
 					Data: models.InnerData{
-						Version: &originalVersion,
+						Version: msg.Data.Version,
 					},
 				}
 				ackMessageBytes, err := json.Marshal(ackMessage)
