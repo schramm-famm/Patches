@@ -149,7 +149,7 @@ func (c *Conversation) Run() {
 				continue
 			}
 			if !ok {
-				log.Printf("Patch %s could not be applied", msg.Data.Patch)
+				log.Printf("Patch %s could not be applied", *msg.Data.Patch)
 				continue
 			}
 
