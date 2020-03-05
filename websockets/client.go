@@ -10,6 +10,7 @@ import (
 type Client struct {
 	userID         int64
 	conversationID int64
+	position       int
 	conn           *gorillaws.Conn
 	broker         *Broker
 	broadcast      chan<- *Message
@@ -21,6 +22,7 @@ func NewClient(userID, conversationID int64, conn *gorillaws.Conn, broker *Broke
 	return &Client{
 		userID:         userID,
 		conversationID: conversationID,
+		position:       0,
 		conn:           conn,
 		broadcast:      broadcast,
 		broker:         broker,

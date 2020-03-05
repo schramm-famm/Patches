@@ -169,6 +169,7 @@ func (c *Conversation) Run() {
 				}
 			}
 			c.version++
+			message.sender.position += *msg.Data.CursorDelta
 
 			ackMessage := models.Message{
 				Type: models.TypeAck,

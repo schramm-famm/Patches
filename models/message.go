@@ -21,5 +21,6 @@ type InnerData struct {
 	Version     *int        `json:"version,omitempty"`
 	Patch       *string     `json:"patch,omitempty"`
 	CursorDelta *int        `json:"cursor_delta,omitempty"`
+	UserID      *int64      `json:"user_id,omitempty"`
 	Content     *string     `json:"content,omitempty"`
 }
