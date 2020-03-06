@@ -229,10 +229,11 @@ func (c *Conversation) Run() {
 					client.send <- broadcastMessageBytes
 				}
 			}
-			c.version++
 			message.sender.position += *msg.Data.CursorDelta
 
 			if *msg.Data.Type == models.UpdateTypeEdit {
+				c.version++
+
 				ackMessage := models.Message{
 					Type: models.TypeAck,
 					Data: models.InnerData{
