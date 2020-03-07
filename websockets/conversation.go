@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"patches/models"
-	"patches/utils"
 
 	gorillaws "github.com/gorilla/websocket"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -51,38 +50,61 @@ func (c *Conversation) deleteClient(client *Client) {
 	log.Printf("Deregistered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
 }
 
-func (c *Conversation) processMessage(msg *models.Message) (bool, error) {
+func (c *Conversation) processMessage(msg models.Message) (*models.Message, error) {
 	if msg.Type != models.TypeUpdate {
 		errMsg := fmt.Sprintf("Message is not of type %d", models.TypeUpdate)
-		return false, errors.New(errMsg)
+		return nil, errors.New(errMsg)
 	}
 
 	update := msg.Data
-	if *update.Version < 1 {
-		errMsg := fmt.Sprintf("Update has invalid version number %d", update.Version)
-		return false, errors.New(errMsg)
+	if update.Type == nil {
+		errMsg := fmt.Sprintf(`Update is missing required "type" field in "data"`)
+		return nil, errors.New(errMsg)
 	}
 
-	patches, err := dmp.PatchFromText(*update.Patch)
-	if err != nil {
-		return false, err
-	}
-	if len(patches) != 1 {
-		errMsg := "Update must contain one patch"
-		return false, errors.New(errMsg)
+	switch *update.Type {
+	case models.UpdateTypeEdit:
+		if update.Type == nil || update.Version == nil || update.Patch == nil || update.CursorDelta == nil {
+			errMsg := fmt.Sprintf(`Update (EDIT) is missing required fields in "data"`)
+			return nil, errors.New(errMsg)
+		}
+
+		if *update.Version < 1 {
+			errMsg := fmt.Sprintf("Update has invalid version number %d", update.Version)
+			return nil, errors.New(errMsg)
+		}
+
+		patches, err := dmp.PatchFromText(*update.Patch)
+		if err != nil {
+			return nil, err
+		}
+		if len(patches) != 1 {
+			errMsg := "Update must contain one patch"
+			return nil, errors.New(errMsg)
+		}
+
+		newDoc, okList := dmp.PatchApply(patches, c.doc)
+		if !okList[0] {
+			return nil, nil
+		}
+		c.doc = newDoc
+
+		if *update.Version != c.version+1 {
+			*update.Version = c.version + 1
+		}
+
+	case models.UpdateTypeCursor:
+		if update.Type == nil || update.CursorDelta == nil {
+			errMsg := fmt.Sprintf(`Update (CURSOR) is missing required fields in "data"`)
+			return nil, errors.New(errMsg)
+		}
+
+	default:
+		errMsg := fmt.Sprintf("Update has invalid sub-type %d", update.Type)
+		return nil, errors.New(errMsg)
 	}
 
-	newDoc, okList := dmp.PatchApply(patches, c.doc)
-	if !okList[0] {
-		return false, nil
-	}
-	c.doc = newDoc
-
-	if *update.Version != c.version+1 {
-		*update.Version = c.version + 1
-	}
-
-	return true, nil
+	return &msg, nil
 }
 
 // Run waits on a Conversation's three channels for clients to be added, clients
@@ -95,10 +117,19 @@ func (c *Conversation) Run() {
 			init := models.Message{
 				Type: models.TypeInit,
 				Data: models.InnerData{
-					Version: utils.IntPtr(c.version),
+					Version: &c.version,
 					Content: &c.doc,
 				},
 			}
+
+			if len(c.clients) > 0 {
+				activeUsers := make(map[int64]int)
+				for client := range c.clients {
+					activeUsers[client.userID] = client.position
+				}
+				init.Data.ActiveUsers = &activeUsers
+			}
+
 			initMessage, err := json.Marshal(init)
 			if err != nil {
 				log.Print("Failed to encode initial conversation data: ", err)
@@ -112,12 +143,45 @@ func (c *Conversation) Run() {
 				close(client.send)
 				continue
 			}
+
+			userJoinMsg := models.Message{
+				Type: models.TypeUserJoin,
+				Data: models.InnerData{
+					UserID: &client.userID,
+				},
+			}
+			broadcastMessageBytes, err := json.Marshal(userJoinMsg)
+			if err != nil {
+				log.Printf("Failed to encode user joining message as byte array: %v", err)
+				close(client.send)
+				continue
+			}
+			for client := range c.clients {
+				client.send <- broadcastMessageBytes
+			}
+
 			c.clients[client] = true
 			log.Printf("Registered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
 
 		case client := <-c.unregister:
 			if _, ok := c.clients[client]; ok {
 				c.deleteClient(client)
+
+				userLeaveMsg := models.Message{
+					Type: models.TypeUserLeave,
+					Data: models.InnerData{
+						UserID: &client.userID,
+					},
+				}
+				broadcastMessageBytes, err := json.Marshal(userLeaveMsg)
+				if err != nil {
+					log.Printf("Failed to encode user leaving message as byte array: %v", err)
+					close(client.send)
+					continue
+				}
+				for client := range c.clients {
+					client.send <- broadcastMessageBytes
+				}
 			} else {
 				log.Printf("Attempted to deregister an inactive client in conversation %d", c.conversationID)
 			}
@@ -141,26 +205,23 @@ func (c *Conversation) Run() {
 				continue
 			}
 
-			originalVersion := *msg.Data.Version
-			ok, err := c.processMessage(&msg)
+			newMsg, err := c.processMessage(msg)
 			if err != nil {
-				log.Printf("Failed to apply update: %v", err)
+				log.Printf("Failed to process update: %v", err)
 				c.deleteClient(message.sender)
 				continue
 			}
-			if !ok {
+			if newMsg == nil {
 				log.Printf("Patch %s could not be applied", *msg.Data.Patch)
 				continue
 			}
 
-			broadcastMessageBytes := message.content
-			if *msg.Data.Version != originalVersion {
-				broadcastMessageBytes, err = json.Marshal(msg)
-				if err != nil {
-					log.Printf("Failed to encode update as byte array: %v", err)
-					c.deleteClient(message.sender)
-					continue
-				}
+			msg.Data.UserID = &message.sender.userID
+			broadcastMessageBytes, err := json.Marshal(msg)
+			if err != nil {
+				log.Printf("Failed to encode update message as byte array: %v", err)
+				c.deleteClient(message.sender)
+				continue
 			}
 
 			for client := range c.clients {
@@ -168,21 +229,25 @@ func (c *Conversation) Run() {
 					client.send <- broadcastMessageBytes
 				}
 			}
-			c.version++
+			message.sender.position += *msg.Data.CursorDelta
 
-			ackMessage := models.Message{
-				Type: models.TypeAck,
-				Data: models.InnerData{
-					Version: &originalVersion,
-				},
+			if *msg.Data.Type == models.UpdateTypeEdit {
+				c.version++
+
+				ackMessage := models.Message{
+					Type: models.TypeAck,
+					Data: models.InnerData{
+						Version: msg.Data.Version,
+					},
+				}
+				ackMessageBytes, err := json.Marshal(ackMessage)
+				if err != nil {
+					log.Printf("Failed to encode acknowledge message as byte array: %v", err)
+					c.deleteClient(message.sender)
+					continue
+				}
+				message.sender.send <- ackMessageBytes
 			}
-			ackMessageBytes, err := json.Marshal(ackMessage)
-			if err != nil {
-				log.Printf("Failed to encode update as byte array: %v", err)
-				c.deleteClient(message.sender)
-				continue
-			}
-			message.sender.send <- ackMessageBytes
 		}
 	}
 }
