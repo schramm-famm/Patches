@@ -44,12 +44,6 @@ func NewConversation(conversationID int64, doc string) *Conversation {
 	}
 }
 
-func (c *Conversation) deleteClient(client *Client) {
-	delete(c.clients, client)
-	close(client.send)
-	log.Printf("Deregistered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
-}
-
 func (c *Conversation) processMessage(msg models.Message) (*models.Message, error) {
 	if msg.Type != models.TypeUpdate {
 		errMsg := fmt.Sprintf("Message is not of type %d", models.TypeUpdate)
@@ -107,6 +101,141 @@ func (c *Conversation) processMessage(msg models.Message) (*models.Message, erro
 	return &msg, nil
 }
 
+func (c *Conversation) registerClient(client *Client) {
+	// Create and send Init message to the new client
+	init := models.Message{
+		Type: models.TypeInit,
+		Data: models.InnerData{
+			Version: &c.version,
+			Content: &c.doc,
+		},
+	}
+	if len(c.clients) > 0 {
+		activeUsers := make(map[int64]int)
+		for client := range c.clients {
+			activeUsers[client.userID] = client.position
+		}
+		init.Data.ActiveUsers = &activeUsers
+	}
+	initMessage, err := json.Marshal(init)
+	if err != nil {
+		log.Print("Failed to encode initial conversation data: ", err)
+		close(client.send)
+		return
+	}
+	err = client.conn.WriteMessage(gorillaws.TextMessage, initMessage)
+	if err != nil {
+		log.Print("Failed to send initial conversation data: ", err)
+		close(client.send)
+		return
+	}
+
+	// Create and broadcast UserJoin message to all existing clients
+	userJoinMsg := models.Message{
+		Type: models.TypeUserJoin,
+		Data: models.InnerData{
+			UserID: &client.userID,
+		},
+	}
+	broadcastMessageBytes, err := json.Marshal(userJoinMsg)
+	if err != nil {
+		log.Printf("Failed to encode user joining message as byte array: %v", err)
+		close(client.send)
+		return
+	}
+	for client := range c.clients {
+		client.send <- broadcastMessageBytes
+	}
+
+	c.clients[client] = true
+	log.Printf("Registered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
+}
+
+func (c *Conversation) unregisterClient(client *Client) {
+	if _, ok := c.clients[client]; !ok {
+		log.Printf("Attempted to unregister an inactive client in conversation %d", c.conversationID)
+		return
+	}
+
+	delete(c.clients, client)
+	close(client.send)
+	log.Printf("Unregistered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
+
+	// Create and broadcast UserLeave message to all existing clients
+	userLeaveMsg := models.Message{
+		Type: models.TypeUserLeave,
+		Data: models.InnerData{
+			UserID: &client.userID,
+		},
+	}
+	broadcastMessageBytes, err := json.Marshal(userLeaveMsg)
+	if err != nil {
+		log.Printf("Failed to encode user leaving message as byte array: %v", err)
+		return
+	}
+	for client := range c.clients {
+		client.send <- broadcastMessageBytes
+	}
+}
+
+func (c *Conversation) processBroadcast(message *Message) {
+	if _, ok := c.clients[message.sender]; !ok {
+		log.Printf("Attempted to broadcast from an inactive client in conversation %d", c.conversationID)
+		return
+	}
+
+	msg := models.Message{}
+	if err := json.Unmarshal(message.content, &msg); err != nil {
+		log.Printf("Failed to parse WebSocket message content: %v", err)
+		c.unregisterClient(message.sender)
+		return
+	}
+
+	newMsg, err := c.processMessage(msg)
+	if err != nil {
+		log.Printf("Failed to process update: %v", err)
+		c.unregisterClient(message.sender)
+		return
+	}
+	if newMsg == nil {
+		log.Printf("Patch %s could not be applied", *msg.Data.Patch)
+		return
+	}
+
+	msg.Data.UserID = &message.sender.userID
+	broadcastMessageBytes, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("Failed to encode update message as byte array: %v", err)
+		c.unregisterClient(message.sender)
+		return
+	}
+
+	for client := range c.clients {
+		if client != message.sender {
+			client.send <- broadcastMessageBytes
+		}
+	}
+	message.sender.position += *msg.Data.CursorDelta
+
+	if *msg.Data.Type == models.UpdateTypeEdit {
+		c.version++
+
+		ackMessage := models.Message{
+			Type: models.TypeAck,
+			Data: models.InnerData{
+				Version: msg.Data.Version,
+			},
+		}
+		ackMessageBytes, err := json.Marshal(ackMessage)
+		if err != nil {
+			log.Printf("Failed to encode acknowledge message as byte array: %v", err)
+			c.unregisterClient(message.sender)
+			return
+		}
+		message.sender.send <- ackMessageBytes
+	}
+}
+
 // Run waits on a Conversation's three channels for clients to be added, clients
 // to be removed, and messages to be broadcast. Only one of these operations may
 // be performed at a time.
@@ -114,77 +243,10 @@ func (c *Conversation) Run() {
 	for {
 		select {
 		case client := <-c.register:
-			init := models.Message{
-				Type: models.TypeInit,
-				Data: models.InnerData{
-					Version: &c.version,
-					Content: &c.doc,
-				},
-			}
-
-			if len(c.clients) > 0 {
-				activeUsers := make(map[int64]int)
-				for client := range c.clients {
-					activeUsers[client.userID] = client.position
-				}
-				init.Data.ActiveUsers = &activeUsers
-			}
-
-			initMessage, err := json.Marshal(init)
-			if err != nil {
-				log.Print("Failed to encode initial conversation data: ", err)
-				close(client.send)
-				continue
-			}
-
-			err = client.conn.WriteMessage(gorillaws.TextMessage, initMessage)
-			if err != nil {
-				log.Print("Failed to send initial conversation data: ", err)
-				close(client.send)
-				continue
-			}
-
-			userJoinMsg := models.Message{
-				Type: models.TypeUserJoin,
-				Data: models.InnerData{
-					UserID: &client.userID,
-				},
-			}
-			broadcastMessageBytes, err := json.Marshal(userJoinMsg)
-			if err != nil {
-				log.Printf("Failed to encode user joining message as byte array: %v", err)
-				close(client.send)
-				continue
-			}
-			for client := range c.clients {
-				client.send <- broadcastMessageBytes
-			}
-
-			c.clients[client] = true
-			log.Printf("Registered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
+			c.registerClient(client)
 
 		case client := <-c.unregister:
-			if _, ok := c.clients[client]; ok {
-				c.deleteClient(client)
-
-				userLeaveMsg := models.Message{
-					Type: models.TypeUserLeave,
-					Data: models.InnerData{
-						UserID: &client.userID,
-					},
-				}
-				broadcastMessageBytes, err := json.Marshal(userLeaveMsg)
-				if err != nil {
-					log.Printf("Failed to encode user leaving message as byte array: %v", err)
-					close(client.send)
-					continue
-				}
-				for client := range c.clients {
-					client.send <- broadcastMessageBytes
-				}
-			} else {
-				log.Printf("Attempted to deregister an inactive client in conversation %d", c.conversationID)
-			}
+			c.unregisterClient(client)
 
 		case message, ok := <-c.broadcast:
 			if !ok {
@@ -193,61 +255,8 @@ func (c *Conversation) Run() {
 				log.Printf("Shutting down conversation %d", c.conversationID)
 				return
 			}
+			c.processBroadcast(message)
 
-			if _, ok := c.clients[message.sender]; !ok {
-				continue
-			}
-
-			msg := models.Message{}
-			if err := json.Unmarshal(message.content, &msg); err != nil {
-				log.Printf("Failed to parse WebSocket message content: %v", err)
-				c.deleteClient(message.sender)
-				continue
-			}
-
-			newMsg, err := c.processMessage(msg)
-			if err != nil {
-				log.Printf("Failed to process update: %v", err)
-				c.deleteClient(message.sender)
-				continue
-			}
-			if newMsg == nil {
-				log.Printf("Patch %s could not be applied", *msg.Data.Patch)
-				continue
-			}
-
-			msg.Data.UserID = &message.sender.userID
-			broadcastMessageBytes, err := json.Marshal(msg)
-			if err != nil {
-				log.Printf("Failed to encode update message as byte array: %v", err)
-				c.deleteClient(message.sender)
-				continue
-			}
-
-			for client := range c.clients {
-				if client != message.sender {
-					client.send <- broadcastMessageBytes
-				}
-			}
-			message.sender.position += *msg.Data.CursorDelta
-
-			if *msg.Data.Type == models.UpdateTypeEdit {
-				c.version++
-
-				ackMessage := models.Message{
-					Type: models.TypeAck,
-					Data: models.InnerData{
-						Version: msg.Data.Version,
-					},
-				}
-				ackMessageBytes, err := json.Marshal(ackMessage)
-				if err != nil {
-					log.Printf("Failed to encode acknowledge message as byte array: %v", err)
-					c.deleteClient(message.sender)
-					continue
-				}
-				message.sender.send <- ackMessageBytes
-			}
 		}
 	}
 }
