@@ -43,7 +43,7 @@ func NewConversation(conversationID int64, doc string) *Conversation {
 	}
 }
 
-// sendMessage sends a message to a single receiving client
+// sendMessage sends a message to a single receiving client.
 func (c *Conversation) sendMessage(msg models.Message, receiver *Client) error {
 	messageBytes, err := json.Marshal(msg)
 	if err != nil {
@@ -55,7 +55,7 @@ func (c *Conversation) sendMessage(msg models.Message, receiver *Client) error {
 	return nil
 }
 
-// broadcastMessage sends a message to all clients except a specified sender
+// broadcastMessage sends a message to all clients except a specified sender.
 func (c *Conversation) broadcastMessage(msg models.Message, sender *Client) error {
 	broadcastMessageBytes, err := json.Marshal(msg)
 	if err != nil {
