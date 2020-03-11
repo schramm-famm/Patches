@@ -13,12 +13,18 @@ type Client struct {
 	position       int
 	conn           *gorillaws.Conn
 	broker         *Broker
-	broadcast      chan<- *Message
+	broadcast      chan<- *BroadcastMessage
 	send           chan []byte
 }
 
 // NewClient creates a new Client struct.
-func NewClient(userID, conversationID int64, conn *gorillaws.Conn, broker *Broker, broadcast chan<- *Message) *Client {
+func NewClient(
+	userID int64,
+	conversationID int64,
+	conn *gorillaws.Conn,
+	broker *Broker,
+	broadcast chan<- *BroadcastMessage,
+) *Client {
 	return &Client{
 		userID:         userID,
 		conversationID: conversationID,
@@ -47,7 +53,7 @@ func (c *Client) read() {
 			break
 		}
 
-		c.broadcast <- &Message{data, c}
+		c.broadcast <- &BroadcastMessage{data, c}
 	}
 }
 
