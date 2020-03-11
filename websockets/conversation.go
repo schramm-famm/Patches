@@ -22,7 +22,8 @@ type Conversation struct {
 	broadcast  chan *BroadcastMessage
 }
 
-// BroadcastMessage stores the content and sender of a WebSocket message.
+// BroadcastMessage stores the content and sender of a WebSocket message that is
+// meant to be broadcasted to all other clients in a conversation.
 type BroadcastMessage struct {
 	content []byte
 	sender  *Client
