@@ -78,11 +78,11 @@ func (c *Conversation) handleEditUpdate(msg models.Message, sender *Client) erro
 	update := msg.Data
 
 	if update.Type == nil || update.Version == nil || update.Patch == nil || update.CursorDelta == nil {
-		return fmt.Errorf(`Update (EDIT) is missing required fields in "data"`)
+		return fmt.Errorf(`update (EDIT) is missing required fields in "data"`)
 	}
 
 	if *update.Version < 1 {
-		return fmt.Errorf("Update has invalid version number %d", update.Version)
+		return fmt.Errorf("update has invalid version number %d", update.Version)
 	}
 
 	patches, err := dmp.PatchFromText(*update.Patch)
@@ -90,7 +90,7 @@ func (c *Conversation) handleEditUpdate(msg models.Message, sender *Client) erro
 		return err
 	}
 	if len(patches) != 1 {
-		return fmt.Errorf("Update must contain one patch")
+		return fmt.Errorf("update must contain one patch")
 	}
 
 	newDoc, okList := dmp.PatchApply(patches, c.doc)
@@ -131,7 +131,7 @@ func (c *Conversation) handleCursorUpdate(msg models.Message, sender *Client) er
 	update := msg.Data
 
 	if update.Type == nil || update.CursorDelta == nil {
-		return fmt.Errorf(`Update (CURSOR) is missing required fields in "data"`)
+		return fmt.Errorf(`update (CURSOR) is missing required fields in "data"`)
 	}
 
 	msg.Data.UserID = &sender.userID
@@ -247,7 +247,7 @@ func (c *Conversation) processBroadcast(broadcastMsg *BroadcastMessage) error {
 		}
 
 	default:
-		return fmt.Errorf("Update has invalid subtype %d", *msg.Data.Type)
+		return fmt.Errorf("update has invalid subtype %d", *msg.Data.Type)
 	}
 
 	return nil
