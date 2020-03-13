@@ -1,4 +1,4 @@
-package websockets
+package caret
 
 var deleteTests = []struct {
 	Name            string

@@ -1,5 +1,7 @@
 package websockets
 
+import "patches/websockets/caret"
+
 type Message struct {
 	Type MessageType `json:"type"`
 	Data InnerData   `json:"data"`
@@ -20,13 +22,13 @@ const (
 )
 
 type InnerData struct {
-	Type        *UpdateType      `json:"type,omitempty"`
-	Version     *int             `json:"version,omitempty"`
-	Patch       *string          `json:"patch,omitempty"`
-	Delta       *Delta           `json:"delta,omitempty"`
-	UserID      *int64           `json:"user_id,omitempty"`
-	Content     *string          `json:"content,omitempty"`
-	ActiveUsers *map[int64]Caret `json:"active_users,omitempty"`
+	Type        *UpdateType            `json:"type,omitempty"`
+	Version     *int                   `json:"version,omitempty"`
+	Patch       *string                `json:"patch,omitempty"`
+	Delta       *Delta                 `json:"delta,omitempty"`
+	UserID      *int64                 `json:"user_id,omitempty"`
+	Content     *string                `json:"content,omitempty"`
+	ActiveUsers *map[int64]caret.Caret `json:"active_users,omitempty"`
 }
 
 type Delta struct {

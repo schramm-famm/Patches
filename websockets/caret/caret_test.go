@@ -1,4 +1,4 @@
-package websockets
+package caret
 
 import (
 	"testing"
@@ -22,7 +22,7 @@ func TestPostConversationsHandler(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
-			newCaret := shiftCaret(
+			newCaret := ShiftCaret(
 				test.ReceiverCaret,
 				test.SenderCaret,
 				test.CaretStartDelta,

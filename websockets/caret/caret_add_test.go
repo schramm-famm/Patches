@@ -1,4 +1,4 @@
-package websockets
+package caret
 
 var addTests = []struct {
 	Name            string

@@ -1,4 +1,4 @@
-package websockets
+package caret
 
 type Caret struct {
 	Start int `json:"caret_start"`
@@ -21,7 +21,7 @@ func processAdd(
 	return receiverCaret
 }
 
-func shiftCaret(
+func ShiftCaret(
 	receiverCaret Caret,
 	senderCaret Caret,
 	caretStartDelta int,

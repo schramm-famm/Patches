@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"patches/websockets/caret"
 
 	gorillaws "github.com/gorilla/websocket"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -109,7 +110,7 @@ func (c *Conversation) handleEditUpdate(msg Message, sender *Client) error {
 
 	for client := range c.clients {
 		if client != sender {
-			client.caret = shiftCaret(
+			client.caret = caret.ShiftCaret(
 				client.caret,
 				sender.caret,
 				*delta.CaretStart,
@@ -180,9 +181,9 @@ func (c *Conversation) registerClient(client *Client) error {
 		},
 	}
 	if len(c.clients) > 0 {
-		activeUsers := make(map[int64]Caret)
+		activeUsers := make(map[int64]caret.Caret)
 		for client := range c.clients {
-			activeUsers[client.userID] = Caret{
+			activeUsers[client.userID] = caret.Caret{
 				Start: client.caret.Start,
 				End:   client.caret.End,
 			}
