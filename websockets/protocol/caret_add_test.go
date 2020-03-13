@@ -1,4 +1,4 @@
-package caret
+package protocol
 
 var addTests = []struct {
 	Name            string

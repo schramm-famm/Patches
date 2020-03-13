@@ -1,4 +1,4 @@
-package caret
+package protocol
 
 type Caret struct {
 	Start int `json:"caret_start"`

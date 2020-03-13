@@ -2,7 +2,7 @@ package websockets
 
 import (
 	"log"
-	"patches/websockets/caret"
+	"patches/websockets/protocol"
 
 	gorillaws "github.com/gorilla/websocket"
 )
@@ -11,7 +11,7 @@ import (
 type Client struct {
 	userID         int64
 	conversationID int64
-	caret          caret.Caret
+	caret          protocol.Caret
 	conn           *gorillaws.Conn
 	broker         *Broker
 	broadcast      chan<- *BroadcastMessage
@@ -29,7 +29,7 @@ func NewClient(
 	return &Client{
 		userID:         userID,
 		conversationID: conversationID,
-		caret:          caret.Caret{Start: 0, End: 0},
+		caret:          protocol.Caret{Start: 0, End: 0},
 		conn:           conn,
 		broadcast:      broadcast,
 		broker:         broker,

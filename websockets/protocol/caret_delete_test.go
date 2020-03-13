@@ -1,4 +1,4 @@
-package caret
+package protocol
 
 var deleteTests = []struct {
 	Name            string

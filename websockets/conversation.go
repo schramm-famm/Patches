@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"patches/websockets/caret"
+	"patches/websockets/protocol"
 
 	gorillaws "github.com/gorilla/websocket"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -45,7 +45,7 @@ func NewConversation(conversationID int64, doc string) *Conversation {
 }
 
 // sendMessage sends a message to a single receiving client.
-func (c *Conversation) sendMessage(msg Message, receiver *Client) error {
+func (c *Conversation) sendMessage(msg protocol.Message, receiver *Client) error {
 	messageBytes, err := json.Marshal(msg)
 	if err != nil {
 		return err
@@ -57,7 +57,7 @@ func (c *Conversation) sendMessage(msg Message, receiver *Client) error {
 }
 
 // broadcastMessage sends a message to all clients except a specified sender.
-func (c *Conversation) broadcastMessage(msg Message, sender *Client) error {
+func (c *Conversation) broadcastMessage(msg protocol.Message, sender *Client) error {
 	broadcastMessageBytes, err := json.Marshal(msg)
 	if err != nil {
 		return err
@@ -74,7 +74,7 @@ func (c *Conversation) broadcastMessage(msg Message, sender *Client) error {
 
 // handleEditUpdate processes an Update message of subtype Edit and broadcasts
 // it out to all clients in the conversation that aren't the sender.
-func (c *Conversation) handleEditUpdate(msg Message, sender *Client) error {
+func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) error {
 	update := msg.Data
 
 	if update.Type == nil || update.Version == nil || update.Patch == nil || update.Delta == nil {
@@ -110,7 +110,7 @@ func (c *Conversation) handleEditUpdate(msg Message, sender *Client) error {
 
 	for client := range c.clients {
 		if client != sender {
-			client.caret = caret.ShiftCaret(
+			client.caret = protocol.ShiftCaret(
 				client.caret,
 				sender.caret,
 				*delta.CaretStart,
@@ -129,9 +129,9 @@ func (c *Conversation) handleEditUpdate(msg Message, sender *Client) error {
 		return err
 	}
 
-	ackMessage := Message{
-		Type: TypeAck,
-		Data: InnerData{
+	ackMessage := protocol.Message{
+		Type: protocol.TypeAck,
+		Data: protocol.InnerData{
 			Version: update.Version,
 		},
 	}
@@ -145,7 +145,7 @@ func (c *Conversation) handleEditUpdate(msg Message, sender *Client) error {
 
 // handleCursorUpdate processes an Update message of subtype Cursor and
 // broadcasts it out to all clients in the conversation that aren't the sender.
-func (c *Conversation) handleCursorUpdate(msg Message, sender *Client) error {
+func (c *Conversation) handleCursorUpdate(msg protocol.Message, sender *Client) error {
 	update := msg.Data
 
 	if update.Type == nil || update.Delta == nil {
@@ -173,17 +173,17 @@ func (c *Conversation) handleCursorUpdate(msg Message, sender *Client) error {
 // clients.
 func (c *Conversation) registerClient(client *Client) error {
 	// Create and send Init message to the new client
-	init := Message{
-		Type: TypeInit,
-		Data: InnerData{
+	init := protocol.Message{
+		Type: protocol.TypeInit,
+		Data: protocol.InnerData{
 			Version: &c.version,
 			Content: &c.doc,
 		},
 	}
 	if len(c.clients) > 0 {
-		activeUsers := make(map[int64]caret.Caret)
+		activeUsers := make(map[int64]protocol.Caret)
 		for client := range c.clients {
-			activeUsers[client.userID] = caret.Caret{
+			activeUsers[client.userID] = protocol.Caret{
 				Start: client.caret.Start,
 				End:   client.caret.End,
 			}
@@ -200,9 +200,9 @@ func (c *Conversation) registerClient(client *Client) error {
 	}
 
 	// Create and broadcast UserJoin message to all existing clients
-	userJoinMsg := Message{
-		Type: TypeUserJoin,
-		Data: InnerData{
+	userJoinMsg := protocol.Message{
+		Type: protocol.TypeUserJoin,
+		Data: protocol.InnerData{
 			UserID: &client.userID,
 		},
 	}
@@ -229,9 +229,9 @@ func (c *Conversation) unregisterClient(client *Client) error {
 	log.Printf("Unregistered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
 
 	// Create and broadcast UserLeave message to all existing clients
-	userLeaveMsg := Message{
-		Type: TypeUserLeave,
-		Data: InnerData{
+	userLeaveMsg := protocol.Message{
+		Type: protocol.TypeUserLeave,
+		Data: protocol.InnerData{
 			UserID: &client.userID,
 		},
 	}
@@ -250,13 +250,13 @@ func (c *Conversation) processBroadcast(broadcastMsg *BroadcastMessage) error {
 		return nil
 	}
 
-	msg := Message{}
+	msg := protocol.Message{}
 	if err := json.Unmarshal(broadcastMsg.content, &msg); err != nil {
 		return fmt.Errorf("failed to parse WebSocket message content: %v", err)
 	}
 
-	if msg.Type != TypeUpdate {
-		return fmt.Errorf("message is not of type %d", TypeUpdate)
+	if msg.Type != protocol.TypeUpdate {
+		return fmt.Errorf("message is not of type %d", protocol.TypeUpdate)
 	}
 
 	if msg.Data.Type == nil {
@@ -264,12 +264,12 @@ func (c *Conversation) processBroadcast(broadcastMsg *BroadcastMessage) error {
 	}
 
 	switch *msg.Data.Type {
-	case UpdateTypeEdit:
+	case protocol.UpdateTypeEdit:
 		if err := c.handleEditUpdate(msg, broadcastMsg.sender); err != nil {
 			return err
 		}
 
-	case UpdateTypeCursor:
+	case protocol.UpdateTypeCursor:
 		if err := c.handleCursorUpdate(msg, broadcastMsg.sender); err != nil {
 			return err
 		}

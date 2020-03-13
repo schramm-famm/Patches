@@ -1,4 +1,4 @@
-package caret
+package protocol
 
 import (
 	"testing"
