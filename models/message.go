@@ -20,11 +20,22 @@ const (
 )
 
 type InnerData struct {
-	Type        *UpdateType    `json:"type,omitempty"`
-	Version     *int           `json:"version,omitempty"`
-	Patch       *string        `json:"patch,omitempty"`
-	CursorDelta *int           `json:"cursor_delta,omitempty"`
-	UserID      *int64         `json:"user_id,omitempty"`
-	Content     *string        `json:"content,omitempty"`
-	ActiveUsers *map[int64]int `json:"active_users,omitempty"`
+	Type        *UpdateType      `json:"type,omitempty"`
+	Version     *int             `json:"version,omitempty"`
+	Patch       *string          `json:"patch,omitempty"`
+	Delta       *Delta           `json:"delta,omitempty"`
+	UserID      *int64           `json:"user_id,omitempty"`
+	Content     *string          `json:"content,omitempty"`
+	ActiveUsers *map[int64]Caret `json:"active_users,omitempty"`
+}
+
+type Delta struct {
+	CaretStart *int `json:"caret_start,omitempty"`
+	CaretEnd   *int `json:"caret_end,omitempty"`
+	Doc        *int `json:"doc,omitempty"`
+}
+
+type Caret struct {
+	Start int `json:"caret_start"`
+	End   int `json:"caret_end"`
 }

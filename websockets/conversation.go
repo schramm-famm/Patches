@@ -77,12 +77,17 @@ func (c *Conversation) broadcastMessage(msg models.Message, sender *Client) erro
 func (c *Conversation) handleEditUpdate(msg models.Message, sender *Client) error {
 	update := msg.Data
 
-	if update.Type == nil || update.Version == nil || update.Patch == nil || update.CursorDelta == nil {
+	if update.Type == nil || update.Version == nil || update.Patch == nil || update.Delta == nil {
 		return fmt.Errorf(`update (EDIT) is missing required fields in "data"`)
 	}
 
+	delta := update.Delta
+	if delta.CaretStart == nil || delta.CaretEnd == nil || delta.Doc == nil {
+		return fmt.Errorf(`update (EDIT) is missing required fields in "data.delta"`)
+	}
+
 	if *update.Version < 1 {
-		return fmt.Errorf("update has invalid version number %d", update.Version)
+		return fmt.Errorf("update (EDIT) has invalid version number %d", update.Version)
 	}
 
 	patches, err := dmp.PatchFromText(*update.Patch)
@@ -90,7 +95,7 @@ func (c *Conversation) handleEditUpdate(msg models.Message, sender *Client) erro
 		return err
 	}
 	if len(patches) != 1 {
-		return fmt.Errorf("update must contain one patch")
+		return fmt.Errorf("update (EDIT) must contain one patch")
 	}
 
 	newDoc, okList := dmp.PatchApply(patches, c.doc)
@@ -109,7 +114,8 @@ func (c *Conversation) handleEditUpdate(msg models.Message, sender *Client) erro
 		return err
 	}
 
-	sender.position += *msg.Data.CursorDelta
+	sender.caret.Start += *msg.Data.Delta.CaretStart
+	sender.caret.End += *msg.Data.Delta.CaretEnd
 	c.version++
 
 	ackMessage := models.Message{
@@ -130,15 +136,22 @@ func (c *Conversation) handleEditUpdate(msg models.Message, sender *Client) erro
 func (c *Conversation) handleCursorUpdate(msg models.Message, sender *Client) error {
 	update := msg.Data
 
-	if update.Type == nil || update.CursorDelta == nil {
+	if update.Type == nil || update.Delta == nil {
 		return fmt.Errorf(`update (CURSOR) is missing required fields in "data"`)
+	}
+
+	delta := update.Delta
+	if delta.CaretStart == nil || delta.CaretEnd == nil {
+		return fmt.Errorf(`update (CURSOR) is missing required fields in "data.delta"`)
 	}
 
 	msg.Data.UserID = &sender.userID
 	if err := c.broadcastMessage(msg, sender); err != nil {
 		return err
 	}
-	sender.position += *msg.Data.CursorDelta
+
+	sender.caret.Start += *msg.Data.Delta.CaretStart
+	sender.caret.End += *msg.Data.Delta.CaretEnd
 
 	return nil
 }
@@ -156,9 +169,12 @@ func (c *Conversation) registerClient(client *Client) error {
 		},
 	}
 	if len(c.clients) > 0 {
-		activeUsers := make(map[int64]int)
+		activeUsers := make(map[int64]models.Caret)
 		for client := range c.clients {
-			activeUsers[client.userID] = client.position
+			activeUsers[client.userID] = models.Caret{
+				Start: client.caret.Start,
+				End:   client.caret.End,
+			}
 		}
 		init.Data.ActiveUsers = &activeUsers
 	}
