@@ -81,8 +81,7 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 		return fmt.Errorf(`update (EDIT) is missing required fields in "data"`)
 	}
 
-	delta := update.Delta
-	if delta.CaretStart == nil || delta.CaretEnd == nil || delta.Doc == nil {
+	if update.Delta.CaretStart == nil || update.Delta.CaretEnd == nil || update.Delta.Doc == nil {
 		return fmt.Errorf(`update (EDIT) is missing required fields in "data.delta"`)
 	}
 
@@ -124,8 +123,8 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 	}
 
 	// Update the sender's caret
-	sender.caret.Start += *delta.CaretStart
-	sender.caret.End += *delta.CaretEnd
+	sender.caret.Start += *update.Delta.CaretStart
+	sender.caret.End += *update.Delta.CaretEnd
 
 	// Update all other clients' carets
 	for client := range c.clients {
@@ -133,9 +132,9 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 			client.caret = protocol.ShiftCaret(
 				client.caret,
 				sender.caret,
-				*delta.CaretStart,
-				*delta.CaretEnd,
-				*delta.Doc,
+				*update.Delta.CaretStart,
+				*update.Delta.CaretEnd,
+				*update.Delta.Doc,
 			)
 		}
 	}
@@ -154,8 +153,7 @@ func (c *Conversation) handleCursorUpdate(msg protocol.Message, sender *Client) 
 		return fmt.Errorf(`update (CURSOR) is missing required fields in "data"`)
 	}
 
-	delta := update.Delta
-	if delta.CaretStart == nil || delta.CaretEnd == nil {
+	if update.Delta.CaretStart == nil || update.Delta.CaretEnd == nil {
 		return fmt.Errorf(`update (CURSOR) is missing required fields in "data.delta"`)
 	}
 
@@ -164,8 +162,8 @@ func (c *Conversation) handleCursorUpdate(msg protocol.Message, sender *Client) 
 		return err
 	}
 
-	sender.caret.Start += *msg.Data.Delta.CaretStart
-	sender.caret.End += *msg.Data.Delta.CaretEnd
+	sender.caret.Start += *update.Delta.CaretStart
+	sender.caret.End += *update.Delta.CaretEnd
 
 	return nil
 }
