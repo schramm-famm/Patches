@@ -102,20 +102,31 @@ func (c *Conversation) handleEditUpdate(msg Message, sender *Client) error {
 		log.Println("Received invalid patch. Will not be broadcasted or acknowledged.")
 		return nil
 	}
-	c.doc = newDoc
 
 	if *update.Version != c.version+1 {
 		*msg.Data.Version = c.version + 1
 	}
 
+	for client := range c.clients {
+		if client != sender {
+			client.caret = shiftCaret(
+				client.caret,
+				sender.caret,
+				*delta.CaretStart,
+				*delta.CaretEnd,
+				*delta.Doc,
+			)
+		}
+	}
+
+	sender.caret.Start += *delta.CaretStart
+	sender.caret.End += *delta.CaretEnd
+	c.version++
+
 	msg.Data.UserID = &sender.userID
 	if err := c.broadcastMessage(msg, sender); err != nil {
 		return err
 	}
-
-	sender.caret.Start += *msg.Data.Delta.CaretStart
-	sender.caret.End += *msg.Data.Delta.CaretEnd
-	c.version++
 
 	ackMessage := Message{
 		Type: TypeAck,
@@ -127,6 +138,7 @@ func (c *Conversation) handleEditUpdate(msg Message, sender *Client) error {
 		return err
 	}
 
+	c.doc = newDoc
 	return nil
 }
 

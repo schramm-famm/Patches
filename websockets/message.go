@@ -34,8 +34,3 @@ type Delta struct {
 	CaretEnd   *int `json:"caret_end,omitempty"`
 	Doc        *int `json:"doc,omitempty"`
 }
-
-type Caret struct {
-	Start int `json:"caret_start"`
-	End   int `json:"caret_end"`
-}
