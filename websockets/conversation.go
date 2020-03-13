@@ -108,22 +108,6 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 		*msg.Data.Version = c.version + 1
 	}
 
-	for client := range c.clients {
-		if client != sender {
-			client.caret = protocol.ShiftCaret(
-				client.caret,
-				sender.caret,
-				*delta.CaretStart,
-				*delta.CaretEnd,
-				*delta.Doc,
-			)
-		}
-	}
-
-	sender.caret.Start += *delta.CaretStart
-	sender.caret.End += *delta.CaretEnd
-	c.version++
-
 	msg.Data.UserID = &sender.userID
 	if err := c.broadcastMessage(msg, sender); err != nil {
 		return err
@@ -139,6 +123,24 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 		return err
 	}
 
+	// Update the sender's caret
+	sender.caret.Start += *delta.CaretStart
+	sender.caret.End += *delta.CaretEnd
+
+	// Update all other clients' carets
+	for client := range c.clients {
+		if client != sender {
+			client.caret = protocol.ShiftCaret(
+				client.caret,
+				sender.caret,
+				*delta.CaretStart,
+				*delta.CaretEnd,
+				*delta.Doc,
+			)
+		}
+	}
+
+	c.version++
 	c.doc = newDoc
 	return nil
 }
