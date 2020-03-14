@@ -1,8 +1,9 @@
 package protocol
 
+// Caret represents a user's Start and End position in the document
 type Caret struct {
-	Start int `json:"caret_start"`
-	End   int `json:"caret_end"`
+	Start int `json:"start"`
+	End   int `json:"end"`
 }
 
 // processAdd takes a recceiverCaret and returns a shifted Caret according to a
@@ -51,20 +52,16 @@ func (receiverCaret Caret) ShiftCaret(
 		receiverCaret.End += rangeDelta
 		if rangeEnd <= receiverCaret.Start {
 			receiverCaret.Start += rangeDelta
-		} else {
-			if rangeStart < receiverCaret.Start {
-				receiverCaret.Start = rangeStart
-			}
+		} else if rangeStart < receiverCaret.Start {
+			receiverCaret.Start = rangeStart
 		}
-	} else {
-		if rangeEnd == receiverCaret.End {
-			receiverCaret.Start = rangeEnd + rangeDelta
-			receiverCaret.End = rangeEnd + rangeDelta
-		} else if rangeStart < receiverCaret.End {
-			receiverCaret.End = rangeStart
-			if rangeStart < receiverCaret.Start {
-				receiverCaret.Start = rangeStart
-			}
+	} else if rangeEnd == receiverCaret.End {
+		receiverCaret.Start = rangeEnd + rangeDelta
+		receiverCaret.End = rangeEnd + rangeDelta
+	} else if rangeStart < receiverCaret.End {
+		receiverCaret.End = rangeStart
+		if rangeStart < receiverCaret.Start {
+			receiverCaret.Start = rangeStart
 		}
 	}
 
