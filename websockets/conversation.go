@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"patches/models"
+	"patches/websockets/protocol"
 
 	gorillaws "github.com/gorilla/websocket"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -45,7 +45,7 @@ func NewConversation(conversationID int64, doc string) *Conversation {
 }
 
 // sendMessage sends a message to a single receiving client.
-func (c *Conversation) sendMessage(msg models.Message, receiver *Client) error {
+func (c *Conversation) sendMessage(msg protocol.Message, receiver *Client) error {
 	messageBytes, err := json.Marshal(msg)
 	if err != nil {
 		return err
@@ -57,7 +57,7 @@ func (c *Conversation) sendMessage(msg models.Message, receiver *Client) error {
 }
 
 // broadcastMessage sends a message to all clients except a specified sender.
-func (c *Conversation) broadcastMessage(msg models.Message, sender *Client) error {
+func (c *Conversation) broadcastMessage(msg protocol.Message, sender *Client) error {
 	broadcastMessageBytes, err := json.Marshal(msg)
 	if err != nil {
 		return err
@@ -74,15 +74,19 @@ func (c *Conversation) broadcastMessage(msg models.Message, sender *Client) erro
 
 // handleEditUpdate processes an Update message of subtype Edit and broadcasts
 // it out to all clients in the conversation that aren't the sender.
-func (c *Conversation) handleEditUpdate(msg models.Message, sender *Client) error {
+func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) error {
 	update := msg.Data
 
-	if update.Type == nil || update.Version == nil || update.Patch == nil || update.CursorDelta == nil {
+	if update.Type == nil || update.Version == nil || update.Patch == nil || update.Delta == nil {
 		return fmt.Errorf(`update (EDIT) is missing required fields in "data"`)
 	}
 
+	if update.Delta.CaretStart == nil || update.Delta.CaretEnd == nil || update.Delta.Doc == nil {
+		return fmt.Errorf(`update (EDIT) is missing required fields in "data.delta"`)
+	}
+
 	if *update.Version < 1 {
-		return fmt.Errorf("update has invalid version number %d", update.Version)
+		return fmt.Errorf("update (EDIT) has invalid version number %d", update.Version)
 	}
 
 	patches, err := dmp.PatchFromText(*update.Patch)
@@ -90,7 +94,7 @@ func (c *Conversation) handleEditUpdate(msg models.Message, sender *Client) erro
 		return err
 	}
 	if len(patches) != 1 {
-		return fmt.Errorf("update must contain one patch")
+		return fmt.Errorf("update (EDIT) must contain one patch")
 	}
 
 	newDoc, okList := dmp.PatchApply(patches, c.doc)
@@ -98,7 +102,6 @@ func (c *Conversation) handleEditUpdate(msg models.Message, sender *Client) erro
 		log.Println("Received invalid patch. Will not be broadcasted or acknowledged.")
 		return nil
 	}
-	c.doc = newDoc
 
 	if *update.Version != c.version+1 {
 		*msg.Data.Version = c.version + 1
@@ -109,12 +112,9 @@ func (c *Conversation) handleEditUpdate(msg models.Message, sender *Client) erro
 		return err
 	}
 
-	sender.position += *msg.Data.CursorDelta
-	c.version++
-
-	ackMessage := models.Message{
-		Type: models.TypeAck,
-		Data: models.InnerData{
+	ackMessage := protocol.Message{
+		Type: protocol.TypeAck,
+		Data: protocol.InnerData{
 			Version: update.Version,
 		},
 	}
@@ -122,23 +122,42 @@ func (c *Conversation) handleEditUpdate(msg models.Message, sender *Client) erro
 		return err
 	}
 
+	// Update the sender's caret
+	sender.caret.Start += *update.Delta.CaretStart
+	sender.caret.End += *update.Delta.CaretEnd
+
+	// Update all other clients' carets
+	for client := range c.clients {
+		if client != sender {
+			client.caret = client.caret.ShiftCaret(sender.caret, *update.Delta)
+		}
+	}
+
+	c.version++
+	c.doc = newDoc
 	return nil
 }
 
 // handleCursorUpdate processes an Update message of subtype Cursor and
 // broadcasts it out to all clients in the conversation that aren't the sender.
-func (c *Conversation) handleCursorUpdate(msg models.Message, sender *Client) error {
+func (c *Conversation) handleCursorUpdate(msg protocol.Message, sender *Client) error {
 	update := msg.Data
 
-	if update.Type == nil || update.CursorDelta == nil {
+	if update.Type == nil || update.Delta == nil {
 		return fmt.Errorf(`update (CURSOR) is missing required fields in "data"`)
+	}
+
+	if update.Delta.CaretStart == nil || update.Delta.CaretEnd == nil {
+		return fmt.Errorf(`update (CURSOR) is missing required fields in "data.delta"`)
 	}
 
 	msg.Data.UserID = &sender.userID
 	if err := c.broadcastMessage(msg, sender); err != nil {
 		return err
 	}
-	sender.position += *msg.Data.CursorDelta
+
+	sender.caret.Start += *update.Delta.CaretStart
+	sender.caret.End += *update.Delta.CaretEnd
 
 	return nil
 }
@@ -148,17 +167,20 @@ func (c *Conversation) handleCursorUpdate(msg models.Message, sender *Client) er
 // clients.
 func (c *Conversation) registerClient(client *Client) error {
 	// Create and send Init message to the new client
-	init := models.Message{
-		Type: models.TypeInit,
-		Data: models.InnerData{
+	init := protocol.Message{
+		Type: protocol.TypeInit,
+		Data: protocol.InnerData{
 			Version: &c.version,
 			Content: &c.doc,
 		},
 	}
 	if len(c.clients) > 0 {
-		activeUsers := make(map[int64]int)
+		activeUsers := make(map[int64]protocol.Caret)
 		for client := range c.clients {
-			activeUsers[client.userID] = client.position
+			activeUsers[client.userID] = protocol.Caret{
+				Start: client.caret.Start,
+				End:   client.caret.End,
+			}
 		}
 		init.Data.ActiveUsers = &activeUsers
 	}
@@ -172,9 +194,9 @@ func (c *Conversation) registerClient(client *Client) error {
 	}
 
 	// Create and broadcast UserJoin message to all existing clients
-	userJoinMsg := models.Message{
-		Type: models.TypeUserJoin,
-		Data: models.InnerData{
+	userJoinMsg := protocol.Message{
+		Type: protocol.TypeUserJoin,
+		Data: protocol.InnerData{
 			UserID: &client.userID,
 		},
 	}
@@ -201,9 +223,9 @@ func (c *Conversation) unregisterClient(client *Client) error {
 	log.Printf("Unregistered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
 
 	// Create and broadcast UserLeave message to all existing clients
-	userLeaveMsg := models.Message{
-		Type: models.TypeUserLeave,
-		Data: models.InnerData{
+	userLeaveMsg := protocol.Message{
+		Type: protocol.TypeUserLeave,
+		Data: protocol.InnerData{
 			UserID: &client.userID,
 		},
 	}
@@ -222,13 +244,13 @@ func (c *Conversation) processBroadcast(broadcastMsg *BroadcastMessage) error {
 		return nil
 	}
 
-	msg := models.Message{}
+	msg := protocol.Message{}
 	if err := json.Unmarshal(broadcastMsg.content, &msg); err != nil {
 		return fmt.Errorf("failed to parse WebSocket message content: %v", err)
 	}
 
-	if msg.Type != models.TypeUpdate {
-		return fmt.Errorf("message is not of type %d", models.TypeUpdate)
+	if msg.Type != protocol.TypeUpdate {
+		return fmt.Errorf("message is not of type %d", protocol.TypeUpdate)
 	}
 
 	if msg.Data.Type == nil {
@@ -236,12 +258,12 @@ func (c *Conversation) processBroadcast(broadcastMsg *BroadcastMessage) error {
 	}
 
 	switch *msg.Data.Type {
-	case models.UpdateTypeEdit:
+	case protocol.UpdateTypeEdit:
 		if err := c.handleEditUpdate(msg, broadcastMsg.sender); err != nil {
 			return err
 		}
 
-	case models.UpdateTypeCursor:
+	case protocol.UpdateTypeCursor:
 		if err := c.handleCursorUpdate(msg, broadcastMsg.sender); err != nil {
 			return err
 		}
