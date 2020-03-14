@@ -8,10 +8,7 @@ type Caret struct {
 
 // processAdd takes a recceiverCaret and returns a shifted Caret according to a
 // specified delta.
-func (receiverCaret Caret) processAdd(
-	senderCaret Caret,
-	delta int,
-) Caret {
+func (receiverCaret Caret) processAdd(senderCaret Caret, delta int) Caret {
 	if senderCaret.End < receiverCaret.End {
 		receiverCaret.End += delta
 		if senderCaret.End <= receiverCaret.Start {
@@ -23,10 +20,7 @@ func (receiverCaret Caret) processAdd(
 
 // ShiftCaret takes a receiverCaret and returns a shifted Caret according to
 // the delta values and the location of the senderCaret.
-func (receiverCaret Caret) ShiftCaret(
-	senderCaret Caret,
-	delta Delta,
-) Caret {
+func (receiverCaret Caret) ShiftCaret(senderCaret Caret, delta Delta) Caret {
 	var rangeStart, rangeEnd int
 	if senderCaret.Start != senderCaret.End {
 		rangeStart = senderCaret.Start
