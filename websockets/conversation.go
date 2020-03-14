@@ -129,13 +129,7 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 	// Update all other clients' carets
 	for client := range c.clients {
 		if client != sender {
-			client.caret = protocol.ShiftCaret(
-				client.caret,
-				sender.caret,
-				*update.Delta.CaretStart,
-				*update.Delta.CaretEnd,
-				*update.Delta.Doc,
-			)
+			client.caret = client.caret.ShiftCaret(sender.caret, *update.Delta)
 		}
 	}
 

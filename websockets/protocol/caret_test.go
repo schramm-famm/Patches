@@ -22,12 +22,13 @@ func TestPostConversationsHandler(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
-			newCaret := ShiftCaret(
-				test.ReceiverCaret,
+			newCaret := test.ReceiverCaret.ShiftCaret(
 				test.SenderCaret,
-				test.CaretStartDelta,
-				test.CaretEndDelta,
-				test.DocDelta,
+				Delta{
+					&test.CaretStartDelta,
+					&test.CaretEndDelta,
+					&test.DocDelta,
+				},
 			)
 
 			if test.ExpectedReceiverNewCaret != newCaret {

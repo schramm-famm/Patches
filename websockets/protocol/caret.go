@@ -5,54 +5,52 @@ type Caret struct {
 	End   int `json:"caret_end"`
 }
 
-func processAdd(
-	receiverCaret Caret,
+// processAdd takes a recceiverCaret and returns a shifted Caret according to a
+// specified delta.
+func (receiverCaret Caret) processAdd(
 	senderCaret Caret,
-	caretStartDelta int,
-	caretEndDelta int,
-	docDelta int,
+	delta int,
 ) Caret {
-	if senderCaret.End < receiverCaret.End && caretEndDelta != 0 {
-		receiverCaret.End += docDelta
+	if senderCaret.End < receiverCaret.End {
+		receiverCaret.End += delta
 		if senderCaret.End <= receiverCaret.Start {
-			receiverCaret.Start += docDelta
+			receiverCaret.Start += delta
 		}
 	}
 	return receiverCaret
 }
 
-func ShiftCaret(
-	receiverCaret Caret,
+// ShiftCaret takes a receiverCaret and returns a shifted Caret according to
+// the delta values and the location of the senderCaret.
+func (receiverCaret Caret) ShiftCaret(
 	senderCaret Caret,
-	caretStartDelta int,
-	caretEndDelta int,
-	docDelta int,
+	delta Delta,
 ) Caret {
 	var rangeStart, rangeEnd int
 	if senderCaret.Start != senderCaret.End {
 		rangeStart = senderCaret.Start
 		rangeEnd = senderCaret.End
-	} else if docDelta > 0 {
+	} else if *delta.Doc > 0 {
 		rangeStart = senderCaret.Start
-		rangeEnd = senderCaret.Start + caretStartDelta
-	} else if caretStartDelta == 0 {
+		rangeEnd = senderCaret.Start + *delta.CaretStart
+	} else if *delta.CaretStart == 0 {
 		rangeStart = senderCaret.Start
-		rangeEnd = senderCaret.Start - docDelta
+		rangeEnd = senderCaret.Start - *delta.Doc
 	} else {
-		rangeStart = senderCaret.Start + caretStartDelta
+		rangeStart = senderCaret.Start + *delta.CaretStart
 		rangeEnd = senderCaret.Start
 	}
 
-	if docDelta > 0 && senderCaret.Start == senderCaret.End {
-		return processAdd(receiverCaret, senderCaret, caretStartDelta, caretEndDelta, docDelta)
+	if *delta.Doc > 0 && senderCaret.Start == senderCaret.End {
+		return receiverCaret.processAdd(senderCaret, *delta.Doc)
 	}
 
-	delta := rangeStart - rangeEnd
+	rangeDelta := rangeStart - rangeEnd
 
 	if rangeEnd < receiverCaret.End {
-		receiverCaret.End += delta
+		receiverCaret.End += rangeDelta
 		if rangeEnd <= receiverCaret.Start {
-			receiverCaret.Start += delta
+			receiverCaret.Start += rangeDelta
 		} else {
 			if rangeStart < receiverCaret.Start {
 				receiverCaret.Start = rangeStart
@@ -60,8 +58,8 @@ func ShiftCaret(
 		}
 	} else {
 		if rangeEnd == receiverCaret.End {
-			receiverCaret.Start = rangeEnd + delta
-			receiverCaret.End = rangeEnd + delta
+			receiverCaret.Start = rangeEnd + rangeDelta
+			receiverCaret.End = rangeEnd + rangeDelta
 		} else if rangeStart < receiverCaret.End {
 			receiverCaret.End = rangeStart
 			if rangeStart < receiverCaret.Start {
@@ -70,12 +68,12 @@ func ShiftCaret(
 		}
 	}
 
-	if caretStartDelta > 0 {
+	if *delta.CaretStart > 0 {
 		tmpSenderCaret := Caret{
 			Start: senderCaret.Start,
 			End:   senderCaret.Start,
 		}
-		return processAdd(receiverCaret, tmpSenderCaret, caretStartDelta, caretStartDelta, caretStartDelta)
+		return receiverCaret.processAdd(tmpSenderCaret, *delta.CaretStart)
 	}
 	return receiverCaret
 }
