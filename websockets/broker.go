@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"patches/kafka"
 	"patches/models"
 	"strconv"
 	"sync"
@@ -25,8 +26,8 @@ const (
 )
 
 var (
-	heimdallHost = os.Getenv("HEIMDALL_HOST")
-	etherHost    = os.Getenv("ETHER_HOST")
+	heimdallHost = os.Getenv("PATCHES_HEIMDALL_SERVER")
+	etherHost    = os.Getenv("PATCHES_ETHER_SERVER")
 )
 
 // ConvoData represents a conversation and its associated clients.
@@ -39,17 +40,19 @@ type ConvoData struct {
 // client connections.
 type Broker struct {
 	sync.Mutex
-	active     map[int64]*ConvoData
-	db         models.Datastore
-	httpClient *http.Client
+	active      map[int64]*ConvoData
+	db          models.Datastore
+	httpClient  *http.Client
+	kafkaWriter *kafka.Writer
 }
 
 // NewBroker creates a new Broker struct.
-func NewBroker(db models.Datastore, httpClient *http.Client) *Broker {
+func NewBroker(db models.Datastore, httpClient *http.Client, kafkaWriter *kafka.Writer) *Broker {
 	return &Broker{
-		active:     make(map[int64]*ConvoData),
-		db:         db,
-		httpClient: httpClient,
+		active:      make(map[int64]*ConvoData),
+		db:          db,
+		httpClient:  httpClient,
+		kafkaWriter: kafkaWriter,
 	}
 }
 
@@ -69,7 +72,7 @@ func (b *Broker) register(member *models.UserConversationMapping, conn *gorillaw
 		}
 
 		cd = &ConvoData{
-			conversation: NewConversation(member.ConversationID, content),
+			conversation: NewConversation(member.ConversationID, content, b.db, b.kafkaWriter),
 			clients:      make(map[*Client]bool),
 		}
 		go cd.conversation.Run()

@@ -2,7 +2,7 @@ package websockets
 
 import (
 	"log"
-	"patches/websockets/protocol"
+	"patches/protocol"
 
 	gorillaws "github.com/gorilla/websocket"
 )

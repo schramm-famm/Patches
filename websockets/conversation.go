@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"patches/websockets/protocol"
+	"patches/kafka"
+	"patches/models"
+	"patches/protocol"
 
 	gorillaws "github.com/gorilla/websocket"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -20,6 +22,9 @@ type Conversation struct {
 	register   chan *Client
 	unregister chan *Client
 	broadcast  chan *BroadcastMessage
+
+	db          models.Datastore
+	kafkaWriter *kafka.Writer
 }
 
 // BroadcastMessage stores the content and sender of a WebSocket message that is
@@ -32,7 +37,12 @@ type BroadcastMessage struct {
 var dmp *diffmatchpatch.DiffMatchPatch = diffmatchpatch.New()
 
 // NewConversation creates a new Conversation struct.
-func NewConversation(conversationID int64, doc string) *Conversation {
+func NewConversation(
+	conversationID int64,
+	doc string,
+	db models.Datastore,
+	kafkaWriter *kafka.Writer,
+) *Conversation {
 	return &Conversation{
 		conversationID: conversationID,
 		doc:            doc,
@@ -41,6 +51,8 @@ func NewConversation(conversationID int64, doc string) *Conversation {
 		register:       make(chan *Client),
 		unregister:     make(chan *Client),
 		broadcast:      make(chan *BroadcastMessage),
+		db:             db,
+		kafkaWriter:    kafkaWriter,
 	}
 }
 
@@ -107,10 +119,14 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 		*msg.Data.Version = c.version + 1
 	}
 
+	// Broadcast Update (EDIT) message to all existing clients
 	msg.Data.UserID = &sender.userID
 	if err := c.broadcastMessage(msg, sender); err != nil {
 		return err
 	}
+
+	// Publish Update (EDIT) message to Kafka topic
+	go c.kafkaWriter.PublishPatch(msg, c.conversationID)
 
 	ackMessage := protocol.Message{
 		Type: protocol.TypeAck,
@@ -151,6 +167,7 @@ func (c *Conversation) handleCursorUpdate(msg protocol.Message, sender *Client) 
 		return fmt.Errorf(`update (CURSOR) is missing required fields in "data.delta"`)
 	}
 
+	// Broadcast Update (CURSOR) message to all existing clients
 	msg.Data.UserID = &sender.userID
 	if err := c.broadcastMessage(msg, sender); err != nil {
 		return err
