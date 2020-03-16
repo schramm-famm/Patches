@@ -15,12 +15,12 @@ type Publisher interface {
 	PublishPatch(msg []byte) error
 }
 
-// Writer represents an entity for writing to Kafka topics.
+// Writer represents an entity for writing to one or more Kafka topics.
 type Writer struct {
 	patchesWriter *segkafka.Writer
 }
 
-// NewWriter initializes a new Writer for a list of topics.
+// NewWriter initializes a new Writer.
 func NewWriter(location, topic string) *Writer {
 	return &Writer{
 		patchesWriter: segkafka.NewWriter(segkafka.WriterConfig{
