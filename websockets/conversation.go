@@ -22,6 +22,7 @@ type Conversation struct {
 	register   chan *Client
 	unregister chan *Client
 	broadcast  chan *BroadcastMessage
+	errc       chan error
 
 	db          models.Datastore
 	kafkaWriter *kafka.Writer
@@ -51,6 +52,7 @@ func NewConversation(
 		register:       make(chan *Client),
 		unregister:     make(chan *Client),
 		broadcast:      make(chan *BroadcastMessage),
+		errc:           make(chan error),
 		db:             db,
 		kafkaWriter:    kafkaWriter,
 	}
@@ -126,7 +128,11 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 	}
 
 	// Publish Update (EDIT) message to Kafka topic
-	go c.kafkaWriter.PublishPatch(msg, c.conversationID)
+	go func() {
+		if err := c.kafkaWriter.PublishPatch(msg, c.conversationID); err != nil {
+			c.errc <- err
+		}
+	}()
 
 	ackMessage := protocol.Message{
 		Type: protocol.TypeAck,
@@ -312,12 +318,19 @@ func (c *Conversation) Run() {
 			if !ok {
 				close(c.register)
 				close(c.unregister)
+				close(c.errc)
 				log.Printf("Shutting down conversation %d", c.conversationID)
 				return
 			}
 			if err := c.processBroadcast(broadcastMsg); err != nil {
 				log.Print("Failed to process broadcast message: ", err)
 				c.unregisterClient(broadcastMsg.sender)
+			}
+
+		case err := <-c.errc:
+			log.Print("Error occured during asynchronous action: ", err)
+			for client := range c.clients {
+				c.unregisterClient(client)
 			}
 
 		}
