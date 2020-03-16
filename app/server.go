@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"patches/handlers"
+	"patches/kafka"
 	"patches/models"
 	"time"
 
@@ -25,8 +26,11 @@ func main() {
 		log.Fatal(err)
 		return
 	}
-
-	env := handlers.NewEnv(db, &http.Client{Timeout: time.Second * 10})
+	kafkaWriter := kafka.NewWriter(
+		os.Getenv("PATCHES_KAFKA_SERVER"),
+		os.Getenv("PATCHES_KAFKA_TOPIC"),
+	)
+	env := handlers.NewEnv(db, &http.Client{Timeout: time.Second * 10}, kafkaWriter)
 
 	httpMux := mux.NewRouter()
 
