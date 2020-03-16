@@ -10,14 +10,17 @@ import (
 	segkafka "github.com/segmentio/kafka-go"
 )
 
+// Publisher defines the publishing methods for a messaging system
 type Publisher interface {
 	PublishPatch(msg []byte) error
 }
 
+// Writer represents an entity for writing to Kafka topics
 type Writer struct {
 	patchesWriter *segkafka.Writer
 }
 
+// NewWriter initializes a new Writer for a list of topics
 func NewWriter(location, topic string) *Writer {
 	return &Writer{
 		patchesWriter: segkafka.NewWriter(segkafka.WriterConfig{
@@ -29,6 +32,9 @@ func NewWriter(location, topic string) *Writer {
 	}
 }
 
+// PublishPatch publishes a message to a Kafka topic using a conversationID as
+// the key and a struct representation of a WebSocket Update message (msg) as
+// the value
 func (k *Writer) PublishPatch(msg protocol.Message, conversationID int64) error {
 	pubBytes, err := json.Marshal(msg)
 	if err != nil {
