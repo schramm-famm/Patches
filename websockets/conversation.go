@@ -316,9 +316,6 @@ func (c *Conversation) Run() {
 
 		case broadcastMsg, ok := <-c.broadcast:
 			if !ok {
-				close(c.register)
-				close(c.unregister)
-				close(c.errc)
 				log.Printf("Shutting down conversation %d", c.conversationID)
 				return
 			}
