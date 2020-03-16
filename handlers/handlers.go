@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"patches/kafka"
 	"patches/models"
 	"patches/websockets"
 	"strconv"
@@ -18,16 +17,14 @@ import (
 // Env represents all application-level items that are needed by handlers.
 type Env struct {
 	DB       models.Datastore
-	RC       *http.Client
 	WSBroker *websockets.Broker
 }
 
 // NewEnv creates a new Env struct.
-func NewEnv(db models.Datastore, rc *http.Client, kw *kafka.Writer) *Env {
+func NewEnv(db models.Datastore, wsBroker *websockets.Broker) *Env {
 	return &Env{
 		DB:       db,
-		RC:       rc,
-		WSBroker: websockets.NewBroker(db, rc, kw),
+		WSBroker: wsBroker,
 	}
 }
 
