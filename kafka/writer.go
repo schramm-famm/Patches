@@ -12,7 +12,7 @@ import (
 
 // Publisher defines the publishing methods for a messaging system.
 type Publisher interface {
-	PublishPatch(msg []byte) error
+	PublishUpdate(msg []byte) error
 }
 
 // Writer represents an entity for writing to one or more Kafka topics.
@@ -32,10 +32,10 @@ func NewWriter(location, topic string) *Writer {
 	}
 }
 
-// PublishPatch publishes a message to a Kafka topic using a conversationID as
+// PublishUpdate publishes a message to a Kafka topic using a conversationID as
 // the key and a struct representation of a WebSocket Update message (msg) as
 // the value.
-func (k *Writer) PublishPatch(msg protocol.Message, conversationID int64) error {
+func (k *Writer) PublishUpdate(msg protocol.Message, conversationID int64) error {
 	pubBytes, err := json.Marshal(msg)
 	if err != nil {
 		return err

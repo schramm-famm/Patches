@@ -129,7 +129,7 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 
 	// Publish Update (EDIT) message to Kafka topic
 	go func() {
-		if err := c.kafkaWriter.PublishPatch(msg, c.conversationID); err != nil {
+		if err := c.kafkaWriter.PublishUpdate(msg, c.conversationID); err != nil {
 			c.errc <- err
 		}
 	}()
