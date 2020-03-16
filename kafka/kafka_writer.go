@@ -15,12 +15,12 @@ type Publisher interface {
 }
 
 type Writer struct {
-	*segkafka.Writer
+	patchesWriter *segkafka.Writer
 }
 
 func NewWriter(location, topic string) *Writer {
 	return &Writer{
-		segkafka.NewWriter(segkafka.WriterConfig{
+		patchesWriter: segkafka.NewWriter(segkafka.WriterConfig{
 			Brokers:      []string{location},
 			Topic:        topic,
 			Balancer:     &segkafka.LeastBytes{},
@@ -35,7 +35,7 @@ func (k *Writer) PublishPatch(msg protocol.Message, conversationID int64) error 
 		return err
 	}
 
-	err = k.WriteMessages(context.Background(),
+	err = k.patchesWriter.WriteMessages(context.Background(),
 		segkafka.Message{
 			Key:   []byte(strconv.FormatInt(conversationID, 10)),
 			Value: pubBytes,
