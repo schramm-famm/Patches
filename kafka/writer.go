@@ -41,14 +41,10 @@ func (k *Writer) PublishUpdate(msg protocol.Message, conversationID int64) error
 		return err
 	}
 
-	err = k.patchesWriter.WriteMessages(context.Background(),
+	return k.patchesWriter.WriteMessages(context.Background(),
 		segkafka.Message{
 			Key:   []byte(strconv.FormatInt(conversationID, 10)),
 			Value: pubBytes,
 		},
 	)
-	if err != nil {
-		return err
-	}
-	return nil
 }
