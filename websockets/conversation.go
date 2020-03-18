@@ -134,6 +134,8 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 		}
 	}()
 
+	// TODO: Write relevant Update (EDIT) message data to TimescaleDB hypertable
+
 	ackMessage := protocol.Message{
 		Type: protocol.TypeAck,
 		Data: protocol.InnerData{
