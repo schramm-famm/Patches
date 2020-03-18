@@ -2,7 +2,7 @@ package websockets
 
 import (
 	"log"
-	"patches/websockets/protocol"
+	"patches/protocol"
 
 	gorillaws "github.com/gorilla/websocket"
 )
@@ -62,7 +62,10 @@ func (c *Client) read() {
 // sent into the Client's channel.
 func (c *Client) write() {
 	defer func() {
-		c.conn.WriteMessage(gorillaws.CloseMessage, []byte{})
+		c.conn.WriteMessage(
+			gorillaws.CloseMessage,
+			gorillaws.FormatCloseMessage(gorillaws.CloseGoingAway, "Going away"),
+		)
 	}()
 
 	for message := range c.send {

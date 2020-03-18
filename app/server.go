@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"os"
 	"patches/handlers"
+	"patches/kafka"
 	"patches/models"
+	"patches/websockets"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -25,8 +27,13 @@ func main() {
 		log.Fatal(err)
 		return
 	}
-
-	env := handlers.NewEnv(db, &http.Client{Timeout: time.Second * 10})
+	httpClient := &http.Client{Timeout: time.Second * 10}
+	kafkaWriter := kafka.NewWriter(
+		os.Getenv("PATCHES_KAFKA_SERVER"),
+		os.Getenv("PATCHES_KAFKA_TOPIC"),
+	)
+	broker := websockets.NewBroker(db, httpClient, kafkaWriter)
+	env := handlers.NewEnv(db, broker)
 
 	httpMux := mux.NewRouter()
 

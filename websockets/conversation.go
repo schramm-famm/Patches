@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"patches/websockets/protocol"
+	"patches/kafka"
+	"patches/models"
+	"patches/protocol"
 
 	gorillaws "github.com/gorilla/websocket"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -20,6 +22,10 @@ type Conversation struct {
 	register   chan *Client
 	unregister chan *Client
 	broadcast  chan *BroadcastMessage
+	errc       chan error
+
+	db          models.Datastore
+	kafkaWriter *kafka.Writer
 }
 
 // BroadcastMessage stores the content and sender of a WebSocket message that is
@@ -32,7 +38,12 @@ type BroadcastMessage struct {
 var dmp *diffmatchpatch.DiffMatchPatch = diffmatchpatch.New()
 
 // NewConversation creates a new Conversation struct.
-func NewConversation(conversationID int64, doc string) *Conversation {
+func NewConversation(
+	conversationID int64,
+	doc string,
+	db models.Datastore,
+	kafkaWriter *kafka.Writer,
+) *Conversation {
 	return &Conversation{
 		conversationID: conversationID,
 		doc:            doc,
@@ -41,6 +52,9 @@ func NewConversation(conversationID int64, doc string) *Conversation {
 		register:       make(chan *Client),
 		unregister:     make(chan *Client),
 		broadcast:      make(chan *BroadcastMessage),
+		errc:           make(chan error),
+		db:             db,
+		kafkaWriter:    kafkaWriter,
 	}
 }
 
@@ -107,10 +121,20 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 		*msg.Data.Version = c.version + 1
 	}
 
+	// Broadcast Update (EDIT) message to all existing clients
 	msg.Data.UserID = &sender.userID
 	if err := c.broadcastMessage(msg, sender); err != nil {
 		return err
 	}
+
+	// Publish Update (EDIT) message to Kafka topic
+	go func() {
+		if err := c.kafkaWriter.PublishUpdate(msg, c.conversationID); err != nil {
+			c.errc <- err
+		}
+	}()
+
+	// TODO: Write relevant Update (EDIT) message data to TimescaleDB hypertable
 
 	ackMessage := protocol.Message{
 		Type: protocol.TypeAck,
@@ -151,6 +175,7 @@ func (c *Conversation) handleCursorUpdate(msg protocol.Message, sender *Client) 
 		return fmt.Errorf(`update (CURSOR) is missing required fields in "data.delta"`)
 	}
 
+	// Broadcast Update (CURSOR) message to all existing clients
 	msg.Data.UserID = &sender.userID
 	if err := c.broadcastMessage(msg, sender); err != nil {
 		return err
@@ -293,14 +318,18 @@ func (c *Conversation) Run() {
 
 		case broadcastMsg, ok := <-c.broadcast:
 			if !ok {
-				close(c.register)
-				close(c.unregister)
 				log.Printf("Shutting down conversation %d", c.conversationID)
 				return
 			}
 			if err := c.processBroadcast(broadcastMsg); err != nil {
 				log.Print("Failed to process broadcast message: ", err)
 				c.unregisterClient(broadcastMsg.sender)
+			}
+
+		case err := <-c.errc:
+			log.Print("Error occured during asynchronous action: ", err)
+			for client := range c.clients {
+				c.unregisterClient(client)
 			}
 
 		}

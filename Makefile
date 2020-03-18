@@ -1,6 +1,13 @@
 APP_NAME=patches
-HEIMDALL_HOST?=localhost
-ETHER_HOST?=localhost:8082
+PATCHES_HEIMDALL_SERVER?=localhost
+PATCHES_ETHER_SERVER?=localhost:8082
+PATCHES_KAFKA_SERVER?=localhost:9092
+PATCHES_KAFKA_TOPIC?=updates
+PATCHES_DB_HOST?=localhost
+PATCHES_DB_PORT?=5432
+PATCHES_DB_USERNAME?=postgres
+PATCHES_DB_PASSWORD?=patches
+PATCHES_DB_DATABASE?=patches
 HELP_FUNC = \
     %help; \
     while(<>) { \
@@ -33,7 +40,15 @@ test: build 		## build and test the module packages
 	go test ./...
 
 run: build 			## build and run the app binaries
-	export HEIMDALL_HOST="${HEIMDALL_HOST}" && export ETHER_HOST="${ETHER_HOST}" && \
+	export PATCHES_HEIMDALL_SERVER="${PATCHES_HEIMDALL_SERVER}" && \
+		export PATCHES_ETHER_SERVER="${PATCHES_ETHER_SERVER}" && \
+		export PATCHES_KAFKA_SERVER="${PATCHES_KAFKA_SERVER}" && \
+		export PATCHES_KAFKA_TOPIC="${PATCHES_KAFKA_TOPIC}" && \
+		export PATCHES_DB_HOST="${PATCHES_DB_HOST}" && \
+		export PATCHES_DB_PORT="${PATCHES_DB_PORT}" && \
+		export PATCHES_DB_USERNAME="${PATCHES_DB_USERNAME}" && \
+		export PATCHES_DB_PASSWORD="${PATCHES_DB_PASSWORD}" && \
+		export PATCHES_DB_DATABASE="${PATCHES_DB_DATABASE}" && \
 		./tmp/app
 
 docker: tmp 		## build the docker image
