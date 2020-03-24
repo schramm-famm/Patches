@@ -170,18 +170,19 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 		syncsLeft:   make(map[int64]bool),
 	}
 
-	// Update the sender's caret
-	sender.caret.Start += *update.Delta.CaretStart
-	sender.caret.End += *update.Delta.CaretEnd
-
 	// Update all other clients' carets
 	for client := range c.clients {
 		if client != sender {
 			client.caret = client.caret.ShiftCaret(sender.caret, *update.Delta)
 			newCheckpoint.syncsLeft[client.userID] = true
+			newCheckpoint.activeUsers[client.userID] = client.caret
 		}
-		newCheckpoint.activeUsers[client.userID] = client.caret
 	}
+
+	// Update the sender's caret
+	sender.caret.Start += *update.Delta.CaretStart
+	sender.caret.End += *update.Delta.CaretEnd
+	newCheckpoint.activeUsers[sender.userID] = sender.caret
 
 	c.checkpoint[*update.Version] = newCheckpoint
 
