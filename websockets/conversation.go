@@ -324,6 +324,11 @@ func (c *Conversation) unregisterClient(client *Client) error {
 		return nil
 	}
 
+	for version := range c.checkpoint {
+		delete(c.checkpoint[version].activeUsers, client.userID)
+		delete(c.checkpoint[version].syncsLeft, client.userID)
+	}
+
 	delete(c.clients, client)
 	close(client.send)
 	log.Printf("Unregistered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
