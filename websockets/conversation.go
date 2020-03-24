@@ -18,6 +18,7 @@ type Conversation struct {
 	doc            string
 	clients        map[*Client]bool
 	version        int
+	checkpoint     map[int]*Checkpoint
 
 	register   chan *Client
 	unregister chan *Client
@@ -35,6 +36,16 @@ type BroadcastMessage struct {
 	sender  *Client
 }
 
+// Checkpoint stores active users' carets for a version, the caret position of
+// the sender and the delta of the patch that brought the conversation to this
+// version, and the outstanding Sync's for the version.
+type Checkpoint struct {
+	activeUsers map[int64]protocol.Caret
+	senderCaret protocol.Caret
+	delta       protocol.Delta
+	syncsLeft   map[int64]bool
+}
+
 var dmp *diffmatchpatch.DiffMatchPatch = diffmatchpatch.New()
 
 // NewConversation creates a new Conversation struct.
@@ -49,12 +60,18 @@ func NewConversation(
 		doc:            doc,
 		clients:        make(map[*Client]bool),
 		version:        0,
-		register:       make(chan *Client),
-		unregister:     make(chan *Client),
-		broadcast:      make(chan *BroadcastMessage),
-		errc:           make(chan error),
-		db:             db,
-		kafkaWriter:    kafkaWriter,
+		checkpoint: map[int]*Checkpoint{
+			0: &Checkpoint{
+				activeUsers: make(map[int64]protocol.Caret),
+				syncsLeft:   make(map[int64]bool),
+			},
+		},
+		register:    make(chan *Client),
+		unregister:  make(chan *Client),
+		broadcast:   make(chan *BroadcastMessage),
+		errc:        make(chan error),
+		db:          db,
+		kafkaWriter: kafkaWriter,
 	}
 }
 
@@ -146,19 +163,44 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 		return err
 	}
 
-	// Update the sender's caret
-	sender.caret.Start += *update.Delta.CaretStart
-	sender.caret.End += *update.Delta.CaretEnd
+	newCheckpoint := &Checkpoint{
+		activeUsers: make(map[int64]protocol.Caret),
+		senderCaret: sender.caret,
+		delta:       *update.Delta,
+		syncsLeft:   make(map[int64]bool),
+	}
 
 	// Update all other clients' carets
 	for client := range c.clients {
 		if client != sender {
 			client.caret = client.caret.ShiftCaret(sender.caret, *update.Delta)
+			newCheckpoint.syncsLeft[client.userID] = true
+			newCheckpoint.activeUsers[client.userID] = client.caret
+		}
+	}
+
+	// Update the sender's caret
+	sender.caret.Start += *update.Delta.CaretStart
+	sender.caret.End += *update.Delta.CaretEnd
+	newCheckpoint.activeUsers[sender.userID] = sender.caret
+
+	c.checkpoint[*update.Version] = newCheckpoint
+
+	if len(newCheckpoint.syncsLeft) == 0 {
+		syncMessage := protocol.Message{
+			Type: protocol.TypeSync,
+			Data: protocol.InnerData{
+				Version: update.Version,
+			},
+		}
+		if err := c.handleSync(syncMessage, sender); err != nil {
+			return err
 		}
 	}
 
 	c.version++
 	c.doc = newDoc
+
 	return nil
 }
 
@@ -167,7 +209,7 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 func (c *Conversation) handleCursorUpdate(msg protocol.Message, sender *Client) error {
 	update := msg.Data
 
-	if update.Type == nil || update.Delta == nil {
+	if update.Type == nil || update.Delta == nil || update.Version == nil {
 		return fmt.Errorf(`update (CURSOR) is missing required fields in "data"`)
 	}
 
@@ -181,8 +223,47 @@ func (c *Conversation) handleCursorUpdate(msg protocol.Message, sender *Client) 
 		return err
 	}
 
-	sender.caret.Start += *update.Delta.CaretStart
-	sender.caret.End += *update.Delta.CaretEnd
+	// Apply delta to the sender's caret position at its version checkpoint
+	updateCheckpoint, ok := c.checkpoint[*update.Version]
+	if !ok {
+		return fmt.Errorf("Version %d does not exist in checkpoints", *update.Version)
+	}
+	senderCaret := updateCheckpoint.activeUsers[sender.userID]
+	senderCaret.Start += *update.Delta.CaretStart
+	senderCaret.End += *update.Delta.CaretEnd
+	updateCheckpoint.activeUsers[sender.userID] = senderCaret
+	sender.caret = senderCaret
+
+	// Adjust sender's caret position at subsequent version checkpoints
+	for v := *update.Version + 1; v <= c.version; v++ {
+		prevCaret := c.checkpoint[v-1].activeUsers[sender.userID]
+		c.checkpoint[v].activeUsers[sender.userID] = prevCaret.ShiftCaret(
+			c.checkpoint[v].senderCaret,
+			c.checkpoint[v].delta,
+		)
+	}
+
+	return nil
+}
+
+// handleSync processes Sync messages and tracks outstanding syncs for
+// checkpoint versions. A version checkpoint is removed when there are no
+// outstanding syncs.
+func (c *Conversation) handleSync(msg protocol.Message, sender *Client) error {
+	sync := msg.Data
+
+	if sync.Version == nil {
+		return fmt.Errorf(`sync is missing required fields in "data"`)
+	}
+
+	delete(c.checkpoint[*sync.Version].syncsLeft, sender.userID)
+
+	if len(c.checkpoint[*sync.Version].syncsLeft) == 0 {
+		delete(c.checkpoint, *sync.Version-1)
+		if err := c.broadcastMessage(msg, nil); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -243,6 +324,11 @@ func (c *Conversation) unregisterClient(client *Client) error {
 		return nil
 	}
 
+	for version := range c.checkpoint {
+		delete(c.checkpoint[version].activeUsers, client.userID)
+		delete(c.checkpoint[version].syncsLeft, client.userID)
+	}
+
 	delete(c.clients, client)
 	close(client.send)
 	log.Printf("Unregistered a client in conversation %d (%d active)", c.conversationID, len(c.clients))
@@ -274,8 +360,16 @@ func (c *Conversation) processBroadcast(broadcastMsg *BroadcastMessage) error {
 		return fmt.Errorf("failed to parse WebSocket message content: %v", err)
 	}
 
-	if msg.Type != protocol.TypeUpdate {
-		return fmt.Errorf("message is not of type %d", protocol.TypeUpdate)
+	if msg.Type != protocol.TypeUpdate && msg.Type != protocol.TypeSync {
+		return fmt.Errorf(
+			"message is not of type %d or type %d",
+			protocol.TypeUpdate,
+			protocol.TypeSync,
+		)
+	}
+
+	if msg.Type == protocol.TypeSync {
+		return c.handleSync(msg, broadcastMsg.sender)
 	}
 
 	if msg.Data.Type == nil {
