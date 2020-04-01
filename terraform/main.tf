@@ -102,6 +102,10 @@ resource "aws_security_group" "kafka" {
   }
 }
 
+data "aws_msk_configuration" "main" {
+  name = "riht-kafka-main-2"
+}
+
 resource "aws_msk_cluster" "main" {
   cluster_name           = "main"
   kafka_version          = "2.3.1"
@@ -118,6 +122,11 @@ resource "aws_msk_cluster" "main" {
     encryption_in_transit {
       client_broker = "PLAINTEXT"
     }
+  }
+
+  configuration_info {
+    arn      = data.aws_msk_configuration.main.arn
+    revision = data.aws_msk_configuration.main.latest_revision
   }
 }
 
@@ -166,8 +175,9 @@ module "heimdall" {
   private_key_cert = var.private_key_cert
   cert             = var.cert
   endpoints = {
-    "karen" = module.karen.elb_dns_name
-    "ether" = module.ether.elb_dns_name
+    "karen"   = module.karen.elb_dns_name
+    "ether"   = module.ether.elb_dns_name
+    "patches" = module.patches.elb_dns_name
   }
 }
 
