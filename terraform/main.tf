@@ -24,7 +24,7 @@ module "ecs_base" {
 }
 
 module "ecs_cluster" {
-  source                  = "../../bespin/modules/ecs_cluster"
+  source                  = "github.com/schramm-famm/bespin//modules/ecs_cluster"
   name                    = var.name
   security_group_ids      = [aws_security_group.backend.id]
   subnets                 = module.ecs_base.vpc_private_subnets
@@ -166,7 +166,7 @@ module "patches" {
 /* HEIMDALL CONFIG */
 
 module "heimdall" {
-  source           = "../../heimdall/terraform/modules/heimdall"
+  source           = "github.com/schramm-famm/heimdall//terraform/modules/heimdall"
   name             = var.name
   container_tag    = var.heimdall_container_tag
   cluster_id       = module.ecs_cluster.cluster_id
@@ -198,7 +198,7 @@ module "rds_instance" {
 /* ETHER CONFIG */
 
 module "ether" {
-  source          = "../../ether/terraform/modules/ether"
+  source          = "github.com/schramm-famm/ether//terraform/modules/ether"
   name            = var.name
   container_tag   = var.ether_container_tag
   port            = 8082
