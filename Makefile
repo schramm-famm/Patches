@@ -1,4 +1,6 @@
 APP_NAME=patches
+REGISTRY?=343660461351.dkr.ecr.us-east-2.amazonaws.com
+TAG?=latest
 PATCHES_HEIMDALL_SERVER?=localhost
 PATCHES_ETHER_SERVER?=localhost:8082
 PATCHES_KAFKA_SERVER?=localhost:9092
@@ -50,10 +52,13 @@ run: build 			## build and run the app binaries
 		./tmp/app
 
 docker: tmp 		## build the docker image
-	docker build -t $(APP_NAME) .
+	docker build -t $(REGISTRY)/$(APP_NAME):$(TAG) .
 
 docker-run: docker 	## start the built docker image in a container
-	docker run -it --rm -p 80:80 --name $(APP_NAME) $(APP_NAME)
+	docker run -it --rm -p 80:80 --name $(APP_NAME) $(REGISTRY)/$(APP_NAME):$(TAG)
+
+docker-push: tmp docker
+	docker push $(REGISTRY)/$(APP_NAME):$(TAG)
 
 .PHONY: clean
 clean: 				## remove tmp/ and old docker images
