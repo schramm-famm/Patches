@@ -7,7 +7,6 @@ PATCHES_DB_HOST?=localhost
 PATCHES_DB_PORT?=5432
 PATCHES_DB_USERNAME?=postgres
 PATCHES_DB_PASSWORD?=patches
-PATCHES_DB_DATABASE?=patches
 HELP_FUNC = \
     %help; \
     while(<>) { \
@@ -48,7 +47,6 @@ run: build 			## build and run the app binaries
 		export PATCHES_DB_PORT="${PATCHES_DB_PORT}" && \
 		export PATCHES_DB_USERNAME="${PATCHES_DB_USERNAME}" && \
 		export PATCHES_DB_PASSWORD="${PATCHES_DB_PASSWORD}" && \
-		export PATCHES_DB_DATABASE="${PATCHES_DB_DATABASE}" && \
 		./tmp/app
 
 docker: tmp 		## build the docker image
