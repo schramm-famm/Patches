@@ -34,6 +34,14 @@ tmp: 				## create tmp/
 	if [ -d "./tmp" ]; then rm -rf ./tmp; fi
 	mkdir tmp
 
+rsa: tmp			## generate RSA keys
+	openssl genrsa -out ./tmp/id_rsa 2048
+	openssl rsa -in ./tmp/id_rsa -pubout > ./tmp/id_rsa.pub
+
+cert: rsa
+	printf 'CA\nOntario\nOttawa\nschramm-famm\n\n\n\n' | openssl req -new -x509 -sha256 -key ./tmp/id_rsa \
+		-out ./tmp/server.crt -days 3650
+
 build: tmp 			## build the app binaries
 	go build -o ./tmp ./...
 
