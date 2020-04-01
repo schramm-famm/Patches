@@ -23,7 +23,7 @@ resource "aws_ecs_task_definition" "patches" {
         }
     },
     "cpu": 10,
-    "memory": 512,
+    "memory": 128,
     "essential": true,
     "environment": [
         {
@@ -51,11 +51,11 @@ resource "aws_ecs_task_definition" "patches" {
             "value": "${var.kafka_topic}"
         },
         {
-            "name": "HEIMDALL_SERVER",
+            "name": "PATCHES_HEIMDALL_SERVER",
             "value": "${var.heimdall_endpoint}"
         },
         {
-            "name": "ETHER_SERVER",
+            "name": "PATCHES_ETHER_SERVER",
             "value": "${var.ether_endpoint}"
         }
     ],
@@ -79,9 +79,9 @@ resource "aws_elb" "patches" {
 
   listener {
     instance_port     = var.port
-    instance_protocol = "http"
+    instance_protocol = "tcp"
     lb_port           = 80
-    lb_protocol       = "http"
+    lb_protocol       = "tcp"
   }
 }
 
