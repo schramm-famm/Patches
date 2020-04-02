@@ -5,4 +5,3 @@ output "patches_host" {
 output "heimdall_host" {
   value = module.heimdall.external_lb_dns_name
 }
-

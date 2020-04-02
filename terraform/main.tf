@@ -23,14 +23,22 @@ module "ecs_base" {
   public_subnets     = local.vpc_public_subnets
 }
 
-module "ecs_cluster" {
+module "backend_ecs_cluster" {
   source                  = "github.com/schramm-famm/bespin//modules/ecs_cluster"
-  name                    = var.name
+  name                    = "${var.name}-backend"
   security_group_ids      = [aws_security_group.backend.id]
   subnets                 = module.ecs_base.vpc_private_subnets
   ec2_instance_profile_id = module.ecs_base.ecs_instance_profile_id
   enable_efs              = true
   efs_id                  = aws_efs_file_system.ether.id
+}
+
+module "heimdall_ecs_cluster" {
+  source                  = "github.com/schramm-famm/bespin//modules/ecs_cluster"
+  name                    = "${var.name}-heimdall"
+  security_group_ids      = [aws_security_group.backend.id]
+  subnets                 = module.ecs_base.vpc_private_subnets
+  ec2_instance_profile_id = module.ecs_base.ecs_instance_profile_id
 }
 
 resource "aws_security_group" "load_balancer" {
@@ -149,7 +157,7 @@ module "patches" {
   name              = var.name
   container_tag     = var.patches_container_tag
   port              = 8081
-  cluster_id        = module.ecs_cluster.cluster_id
+  cluster_id        = module.backend_ecs_cluster.cluster_id
   security_groups   = [aws_security_group.load_balancer.id]
   subnets           = module.ecs_base.vpc_public_subnets
   internal          = false
@@ -166,14 +174,15 @@ module "patches" {
 /* HEIMDALL CONFIG */
 
 module "heimdall" {
-  source           = "github.com/schramm-famm/heimdall//terraform/modules/heimdall"
-  name             = var.name
-  container_tag    = var.heimdall_container_tag
-  cluster_id       = module.ecs_cluster.cluster_id
-  vpc_id           = module.ecs_base.vpc_id
-  subnets          = module.ecs_base.vpc_public_subnets
-  private_key_cert = var.private_key_cert
-  cert             = var.cert
+  source              = "github.com/schramm-famm/heimdall//terraform/modules/heimdall"
+  name                = var.name
+  container_tag       = var.heimdall_container_tag
+  cluster_id          = module.heimdall_ecs_cluster.cluster_id
+  vpc_id              = module.ecs_base.vpc_id
+  external_lb_subnets = module.ecs_base.vpc_public_subnets
+  internal_lb_subnets = module.ecs_base.vpc_private_subnets
+  private_key_cert    = var.private_key_cert
+  cert                = var.cert
   endpoints = {
     "karen"   = module.karen.elb_dns_name
     "ether"   = module.ether.elb_dns_name
@@ -202,7 +211,7 @@ module "ether" {
   name            = var.name
   container_tag   = var.ether_container_tag
   port            = 8082
-  cluster_id      = module.ecs_cluster.cluster_id
+  cluster_id      = module.backend_ecs_cluster.cluster_id
   security_groups = [aws_security_group.load_balancer.id]
   subnets         = module.ecs_base.vpc_private_subnets
   internal        = true
@@ -254,7 +263,7 @@ module "karen" {
   name            = var.name
   container_tag   = var.karen_container_tag
   port            = 8083
-  cluster_id      = module.ecs_cluster.cluster_id
+  cluster_id      = module.backend_ecs_cluster.cluster_id
   security_groups = [aws_security_group.load_balancer.id]
   subnets         = module.ecs_base.vpc_private_subnets
   internal        = true
