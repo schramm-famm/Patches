@@ -16,12 +16,12 @@ import (
 
 func main() {
 	connectionString := fmt.Sprintf(
-		"host=%s port=%s user=%s "+"password=%s dbname=%s sslmode=disable",
+		"host=%s port=%s user=%s password=%s sslmode=disable",
 		os.Getenv("PATCHES_DB_HOST"),
 		os.Getenv("PATCHES_DB_PORT"),
 		os.Getenv("PATCHES_DB_USERNAME"),
 		os.Getenv("PATCHES_DB_PASSWORD"),
-		os.Getenv("PATCHES_DB_DATABASE"))
+	)
 	db, err := models.DBConnect(connectionString)
 	if err != nil {
 		log.Fatal(err)
