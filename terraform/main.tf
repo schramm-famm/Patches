@@ -133,7 +133,7 @@ resource "aws_msk_cluster" "main" {
 /* TIMESCALEDB CONFIG */
 
 module "timescaledb" {
-  source                  = "./modules/timescaledb"
+  source                  = "github.com/schramm-famm/bespin//modules/timescaledb"
   name                    = var.name
   vpc_id                  = module.ecs_base.vpc_id
   subnets                 = module.ecs_base.vpc_private_subnets
