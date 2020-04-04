@@ -211,13 +211,16 @@ func (b *Broker) StartClient(conversationID int64, conn *gorillaws.Conn) {
 		conn.Close()
 		return
 	}
-	conn.SetReadDeadline(time.Time{})
 
 	// Verify with Heimdall that the token is authentic
 	token := string(message)
 	userID, err := b.validateToken(token)
 	if err != nil {
 		log.Print("Failed to validate token: ", err)
+		conn.WriteMessage(
+			gorillaws.CloseMessage,
+			gorillaws.FormatCloseMessage(gorillaws.CloseGoingAway, "Failed to validate token"),
+		)
 		conn.Close()
 		return
 	}
@@ -230,6 +233,10 @@ func (b *Broker) StartClient(conversationID int64, conn *gorillaws.Conn) {
 			conversationID,
 			err,
 		)
+		conn.WriteMessage(
+			gorillaws.CloseMessage,
+			gorillaws.FormatCloseMessage(gorillaws.CloseGoingAway, "Failed to conversation member"),
+		)
 		conn.Close()
 		return
 	}
@@ -238,6 +245,10 @@ func (b *Broker) StartClient(conversationID int64, conn *gorillaws.Conn) {
 	client, err := b.register(member, conn)
 	if err != nil {
 		log.Printf("Failed to create a new client (user: %d, conversation: %d): %v", userID, conversationID, err)
+		conn.WriteMessage(
+			gorillaws.CloseMessage,
+			gorillaws.FormatCloseMessage(gorillaws.CloseGoingAway, "Failed to get conversation content"),
+		)
 		conn.Close()
 		return
 	}
