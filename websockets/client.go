@@ -5,7 +5,6 @@ import (
 	"patches/protocol"
 	"time"
 
-	"github.com/gorilla/websocket"
 	gorillaws "github.com/gorilla/websocket"
 )
 
@@ -105,7 +104,7 @@ func (c *Client) write() {
 
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			if err := c.conn.WriteMessage(gorillaws.PingMessage, nil); err != nil {
 				log.Print("Failed to write ping message to WebSocket: ", err)
 				return
 			}
