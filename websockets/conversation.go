@@ -135,7 +135,7 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 		return nil
 	}
 
-	if *update.Version != c.version+1 {
+	if *msg.Data.Version != c.version+1 {
 		*msg.Data.Version = c.version + 1
 	}
 
@@ -157,7 +157,7 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 	ackMessage := protocol.Message{
 		Type: protocol.TypeAck,
 		Data: protocol.InnerData{
-			Version: update.Version,
+			Version: msg.Data.Version,
 		},
 	}
 	if err := c.sendMessage(ackMessage, sender); err != nil {
@@ -185,13 +185,13 @@ func (c *Conversation) handleEditUpdate(msg protocol.Message, sender *Client) er
 	sender.caret.End += *update.Delta.CaretEnd
 	newCheckpoint.activeUsers[sender.userID] = sender.caret
 
-	c.checkpoint[*update.Version] = newCheckpoint
+	c.checkpoint[*msg.Data.Version] = newCheckpoint
 
 	if len(newCheckpoint.syncsLeft) == 0 {
 		syncMessage := protocol.Message{
 			Type: protocol.TypeSync,
 			Data: protocol.InnerData{
-				Version: update.Version,
+				Version: msg.Data.Version,
 			},
 		}
 		if err := c.handleSync(syncMessage, sender); err != nil {
@@ -255,6 +255,18 @@ func (c *Conversation) handleSync(msg protocol.Message, sender *Client) error {
 
 	if sync.Version == nil {
 		return fmt.Errorf(`sync is missing required fields in "data"`)
+	}
+
+	if _, ok := c.checkpoint[*sync.Version]; !ok {
+		log.Printf("Checkpoint for version %d does not exist. Removing all previous checkpoints", *sync.Version)
+		for i := *sync.Version - 1; ; i-- {
+			if _, ok := c.checkpoint[i]; ok {
+				delete(c.checkpoint, i)
+			} else {
+				break
+			}
+		}
+		return nil
 	}
 
 	delete(c.checkpoint[*sync.Version].syncsLeft, sender.userID)
