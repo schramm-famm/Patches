@@ -7,6 +7,7 @@ import (
 	"patches/kafka"
 	"patches/models"
 	"patches/protocol"
+	"time"
 
 	gorillaws "github.com/gorilla/websocket"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -294,6 +295,7 @@ func (c *Conversation) registerClient(client *Client) error {
 	if err != nil {
 		return err
 	}
+	client.conn.SetWriteDeadline(time.Now().Add(writeWait))
 	err = client.conn.WriteMessage(gorillaws.TextMessage, initMessage)
 	if err != nil {
 		return err
